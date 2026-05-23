@@ -27,6 +27,7 @@ class RealtimeAsrConfig:
     sample_rate: int = 16000
     channels: int = 1
     chunk_ms: int = 200
+    final_wait_seconds: float = 1.5
 
 
 class WebSocketRealtimeAsrClient:
@@ -139,7 +140,7 @@ class WebSocketRealtimeAsrClient:
                     ws.send_binary(chunk)
 
             ws.send(json.dumps({"type": "end"}, ensure_ascii=False))
-            time.sleep(0.3)
+            time.sleep(min(max(self.config.final_wait_seconds, 0.1), 3.0))
         except Exception as exc:
             on_error(redact_secret(str(exc)))
         finally:
@@ -272,7 +273,7 @@ class WebSocketRealtimeAsrClient:
                     ensure_ascii=False,
                 )
             )
-            task_done.wait(timeout=10)
+            task_done.wait(timeout=max(self.config.final_wait_seconds, 0.1))
         except Exception as exc:
             on_error(redact_secret(str(exc)))
         finally:

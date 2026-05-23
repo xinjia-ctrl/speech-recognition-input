@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from app.config import Settings, SettingsStore
-from app.asr import AsrEngine, WebSocketRealtimeAsrClient
+from app.asr import AsrEngine, RealtimeAsrConfig, WebSocketRealtimeAsrClient
 from app.history import HistoryStore
 from app.text_tools import (
     filter_text_by_language,
@@ -62,6 +62,7 @@ class CoreTestCase(unittest.TestCase):
                 websocket_api_key="websocket-test-key",
                 websocket_model="realtime-model",
                 realtime_chunk_ms=100,
+                websocket_final_wait_ms=1200,
             )
         )
 
@@ -75,6 +76,17 @@ class CoreTestCase(unittest.TestCase):
         self.assertEqual(loaded.websocket_api_key, "websocket-test-key")
         self.assertEqual(loaded.websocket_model, "realtime-model")
         self.assertEqual(loaded.realtime_chunk_ms, 100)
+        self.assertEqual(loaded.websocket_final_wait_ms, 1200)
+
+    def test_realtime_config_defaults_to_short_final_wait(self) -> None:
+        settings = Settings()
+        config = RealtimeAsrConfig(
+            websocket_url="wss://example.com/realtime",
+            final_wait_seconds=settings.websocket_final_wait_ms / 1000,
+        )
+
+        self.assertEqual(settings.websocket_final_wait_ms, 1500)
+        self.assertEqual(config.final_wait_seconds, 1.5)
 
     def test_local_beam_size_defaults_to_low_latency(self) -> None:
         settings = Settings()

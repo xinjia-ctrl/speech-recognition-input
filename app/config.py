@@ -23,6 +23,7 @@ class Settings:
     websocket_api_key: str = ""
     websocket_model: str = ""
     realtime_chunk_ms: int = 200
+    websocket_final_wait_ms: int = 1500
     hotkey: str = "ctrl+alt+space"
     auto_insert: bool = False
     history_limit: int = 20

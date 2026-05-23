@@ -330,6 +330,11 @@ class FloatingInputWindow(QMainWindow):
         self.realtime_chunk_input.setRange(50, 2000)
         self.realtime_chunk_input.setSingleStep(50)
         self.realtime_chunk_input.setValue(self.settings.realtime_chunk_ms)
+        self.websocket_final_wait_input = QSpinBox()
+        self.websocket_final_wait_input.setRange(100, 5000)
+        self.websocket_final_wait_input.setSingleStep(100)
+        self.websocket_final_wait_input.setValue(self.settings.websocket_final_wait_ms)
+        self.websocket_final_wait_input.setToolTip("停止录音后等待最终结果的时间，越短响应越快")
         self.hotkey_input = QLineEdit(self.settings.hotkey)
         self.auto_insert_check = QCheckBox()
         self.auto_insert_check.setChecked(self.settings.auto_insert)
@@ -350,6 +355,7 @@ class FloatingInputWindow(QMainWindow):
         form.addRow("WebSocket API Key", self.websocket_api_key_input)
         form.addRow("WebSocket 模型", self.websocket_model_input)
         form.addRow("实时音频块(ms)", self.realtime_chunk_input)
+        form.addRow("实时收尾等待(ms)", self.websocket_final_wait_input)
         form.addRow("全局快捷键", self.hotkey_input)
         form.addRow("识别后自动插入", self.auto_insert_check)
         form.addRow("历史记录条数", self.history_limit_input)
@@ -583,6 +589,7 @@ class FloatingInputWindow(QMainWindow):
             language=self.settings.language,
             sample_rate=self.settings.sample_rate,
             chunk_ms=self.settings.realtime_chunk_ms,
+            final_wait_seconds=self.settings.websocket_final_wait_ms / 1000,
         )
         self.text_edit.clear()
         self.realtime_failed = False
@@ -757,6 +764,7 @@ class FloatingInputWindow(QMainWindow):
             websocket_api_key=self.websocket_api_key_input.text().strip(),
             websocket_model=self.websocket_model_input.text().strip(),
             realtime_chunk_ms=self.realtime_chunk_input.value(),
+            websocket_final_wait_ms=self.websocket_final_wait_input.value(),
             hotkey=self.hotkey_input.text().strip() or "ctrl+alt+space",
             auto_insert=self.auto_insert_check.isChecked(),
             history_limit=self.history_limit_input.value(),
