@@ -18,6 +18,9 @@ class Settings:
     api_base_url: str = ""
     api_key: str = ""
     api_model: str = ""
+    websocket_url: str = ""
+    websocket_model: str = ""
+    realtime_chunk_ms: int = 200
     hotkey: str = "ctrl+alt+space"
     auto_insert: bool = False
     history_limit: int = 20

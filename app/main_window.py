@@ -23,7 +23,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.asr import AsrEngine, TranscriptionResult
+from app.asr import (
+    AsrEngine,
+    RealtimeAsrConfig,
+    TranscriptionResult,
+    WebSocketRealtimeAsrClient,
+)
 from app.audio import Recorder, RecordingError
 from app.config import Settings, SettingsStore
 from app.history import HistoryStore
@@ -56,6 +61,26 @@ class TranscribeWorker(QThread):
         self.chunk_finished.emit(self.chunk_index, result)
 
 
+class RealtimeWebSocketWorker(QThread):
+    partial = Signal(str)
+    final = Signal(str)
+    error = Signal(str)
+
+    def __init__(self, config: RealtimeAsrConfig) -> None:
+        super().__init__()
+        self.client = WebSocketRealtimeAsrClient(config)
+
+    def run(self) -> None:
+        self.client.run(
+            on_partial=self.partial.emit,
+            on_final=self.final.emit,
+            on_error=self.error.emit,
+        )
+
+    def stop(self) -> None:
+        self.client.stop()
+
+
 class FloatingInputWindow(QMainWindow):
     hotkey_pressed = Signal()
 
@@ -68,6 +93,8 @@ class FloatingInputWindow(QMainWindow):
         self.history = HistoryStore(limit=self.settings.history_limit)
         self.asr_engine = self._build_engine()
         self.worker: TranscribeWorker | None = None
+        self.realtime_worker: RealtimeWebSocketWorker | None = None
+        self.realtime_failed = False
         self.stream_timer = QTimer(self)
         self.stream_timer.setInterval(3000)
         self.stream_timer.timeout.connect(self.process_streaming_chunk)
@@ -142,7 +169,7 @@ class FloatingInputWindow(QMainWindow):
         settings_page = QWidget()
         form = QFormLayout(settings_page)
         self.provider_combo = QComboBox()
-        self.provider_combo.addItems(["local", "api"])
+        self.provider_combo.addItems(["local", "api", "websocket"])
         self.provider_combo.setCurrentText(self.settings.asr_provider)
         self.model_combo = QComboBox()
         self.model_combo.addItems(["tiny", "base", "small"])
@@ -159,6 +186,14 @@ class FloatingInputWindow(QMainWindow):
         self.api_key_input.setPlaceholderText("云端 API Key，settings.json 已被忽略")
         self.api_model_input = QLineEdit(self.settings.api_model)
         self.api_model_input.setPlaceholderText("例如 whisper-1 或服务商模型名")
+        self.websocket_url_input = QLineEdit(self.settings.websocket_url)
+        self.websocket_url_input.setPlaceholderText("wss://example.com/realtime/asr")
+        self.websocket_model_input = QLineEdit(self.settings.websocket_model)
+        self.websocket_model_input.setPlaceholderText("实时识别模型名，按服务商要求填写")
+        self.realtime_chunk_input = QSpinBox()
+        self.realtime_chunk_input.setRange(50, 2000)
+        self.realtime_chunk_input.setSingleStep(50)
+        self.realtime_chunk_input.setValue(self.settings.realtime_chunk_ms)
         self.hotkey_input = QLineEdit(self.settings.hotkey)
         self.auto_insert_check = QCheckBox()
         self.auto_insert_check.setChecked(self.settings.auto_insert)
@@ -174,6 +209,9 @@ class FloatingInputWindow(QMainWindow):
         form.addRow("API 地址", self.api_base_url_input)
         form.addRow("API Key", self.api_key_input)
         form.addRow("API 模型", self.api_model_input)
+        form.addRow("WebSocket 地址", self.websocket_url_input)
+        form.addRow("WebSocket 模型", self.websocket_model_input)
+        form.addRow("实时音频块(ms)", self.realtime_chunk_input)
         form.addRow("全局快捷键", self.hotkey_input)
         form.addRow("识别后自动插入", self.auto_insert_check)
         form.addRow("历史记录条数", self.history_limit_input)
@@ -214,14 +252,80 @@ class FloatingInputWindow(QMainWindow):
         if self.stream_finalizing and self.stream_workers:
             self._set_status("正在等待剩余分段识别，请稍候")
             return
+        if self.realtime_worker is not None and self.realtime_worker.isRunning():
+            self.stop_websocket_realtime()
+            return
         if self.worker is not None and self.worker.isRunning():
             self._set_status("识别中，请稍候")
+            return
+
+        if self.settings.asr_provider == "websocket":
+            self.start_websocket_realtime()
             return
 
         if self.recorder.is_recording:
             self.stop_recording()
         else:
             self.start_recording()
+
+    def start_websocket_realtime(self) -> None:
+        config = RealtimeAsrConfig(
+            websocket_url=self.settings.websocket_url,
+            api_key=self.settings.api_key,
+            model=self.settings.websocket_model,
+            language=self.settings.language,
+            sample_rate=self.settings.sample_rate,
+            chunk_ms=self.settings.realtime_chunk_ms,
+        )
+        self.text_edit.clear()
+        self.realtime_failed = False
+        self.realtime_worker = RealtimeWebSocketWorker(config)
+        self.realtime_worker.partial.connect(self.on_realtime_partial)
+        self.realtime_worker.final.connect(self.on_realtime_final)
+        self.realtime_worker.error.connect(self.on_realtime_error)
+        self.realtime_worker.finished.connect(self.on_realtime_finished)
+        self.realtime_worker.start()
+        self.record_button.setText("停止录音")
+        self._set_status("实时识别中：正在通过 WebSocket 边说边出字")
+
+    def stop_websocket_realtime(self) -> None:
+        if self.realtime_worker is not None:
+            self.realtime_worker.stop()
+        self.record_button.setText("开始录音")
+        self._set_status("停止录音：正在结束 WebSocket 实时识别")
+
+    @Slot(str)
+    def on_realtime_partial(self, text: str) -> None:
+        self.text_edit.setPlainText(text)
+        self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+
+    @Slot(str)
+    def on_realtime_final(self, text: str) -> None:
+        self.text_edit.setPlainText(text)
+        self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+
+    @Slot(str)
+    def on_realtime_error(self, message: str) -> None:
+        self.realtime_failed = True
+        self._show_error(message)
+        self.record_button.setText("开始录音")
+        self._set_status("错误：WebSocket 实时识别失败")
+
+    @Slot()
+    def on_realtime_finished(self) -> None:
+        if self.realtime_failed:
+            self.realtime_worker = None
+            return
+
+        text = self.text_edit.toPlainText().strip()
+        if text:
+            self.history.add(text)
+            self._refresh_history()
+            if self.settings.auto_insert:
+                self.paste_text()
+        self.record_button.setText("开始录音")
+        self.realtime_worker = None
+        self._set_status("完成：WebSocket 实时识别已结束")
 
     def start_recording(self) -> None:
         try:
@@ -381,6 +485,9 @@ class FloatingInputWindow(QMainWindow):
             api_base_url=self.api_base_url_input.text().strip(),
             api_key=self.api_key_input.text().strip(),
             api_model=self.api_model_input.text().strip(),
+            websocket_url=self.websocket_url_input.text().strip(),
+            websocket_model=self.websocket_model_input.text().strip(),
+            realtime_chunk_ms=self.realtime_chunk_input.value(),
             hotkey=self.hotkey_input.text().strip() or "ctrl+alt+space",
             auto_insert=self.auto_insert_check.isChecked(),
             history_limit=self.history_limit_input.value(),
@@ -419,6 +526,8 @@ class FloatingInputWindow(QMainWindow):
     def _provider_label(self) -> str:
         if self.settings.asr_provider == "api":
             return "云端 API"
+        if self.settings.asr_provider == "websocket":
+            return "WebSocket 实时识别"
         return "本地模型"
 
     def closeEvent(self, event) -> None:
@@ -434,6 +543,8 @@ class FloatingInputWindow(QMainWindow):
         event.ignore()
 
     def quit_app(self) -> None:
+        if self.realtime_worker is not None and self.realtime_worker.isRunning():
+            self.realtime_worker.stop()
         self.hotkey.stop()
         self.tray.hide()
         QApplication.quit()

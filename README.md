@@ -9,6 +9,7 @@
 - 使用 `faster-whisper` 进行本地离线中文语音识别。
 - 识别结果可编辑、整理、复制和插入。
 - 支持分段实时识别：录音过程中按时间片识别并逐步追加文本。
+- 支持 WebSocket 实时识别模式，适配可接收 PCM 音频流的实时 ASR 服务。
 - 支持全局快捷键开始/停止录音。
 - 保存最近语音输入历史。
 - 设置模型大小、模型路径、语言、快捷键和自动插入。
@@ -21,6 +22,7 @@
 - faster-whisper：本地离线语音识别
 - OpenCC：繁体中文转简体中文后处理
 - requests：云端 ASR API 调用
+- websocket-client：WebSocket 实时语音识别
 - pynput：全局快捷键
 - pyperclip + pyautogui：剪贴板与粘贴输入
 
@@ -59,6 +61,9 @@ python -m app
 - `api_base_url`：云端 ASR 接口地址，API 模式必填。
 - `api_key`：云端 ASR 密钥，真实配置文件 `config/settings.json` 已被 `.gitignore` 忽略。
 - `api_model`：云端 ASR 模型名，可按服务商要求填写。
+- `websocket_url`：WebSocket 实时识别地址，WebSocket 模式必填。
+- `websocket_model`：WebSocket 实时识别模型名。
+- `realtime_chunk_ms`：实时音频发送块大小，默认 `200` 毫秒。
 - `language`：识别语言，默认 `zh`。
 - `hotkey`：全局快捷键，默认 `ctrl+alt+space`。
 - `auto_insert`：识别完成后是否自动插入到当前输入位置。
@@ -102,6 +107,10 @@ tests/
 
 - 不要将 `config/settings.json`、API Key 或包含密钥的截图上传到公开仓库。
 - API Key 输入框会以密码形式显示，接口错误信息会对常见密钥格式做脱敏处理。
+
+## WebSocket 实时识别协议
+
+WebSocket 模式会在连接建立后发送一条 JSON 启动消息，然后持续发送 `pcm_s16le` 二进制音频块，停止时发送 `{"type": "end"}`。服务端返回 JSON 时，程序会优先读取 `text`、`transcript`、`transcription` 或 `partial` 字段，并根据 `is_final`、`final`、`completed` 或 `type=final` 判断是否为最终文本。
 
 ## 测试说明
 

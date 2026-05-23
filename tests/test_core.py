@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from app.config import Settings, SettingsStore
-from app.asr import AsrEngine
+from app.asr import AsrEngine, WebSocketRealtimeAsrClient
 from app.history import HistoryStore
 from app.text_tools import redact_secret, tidy_text, to_simplified_chinese
 
@@ -45,6 +45,9 @@ class CoreTestCase(unittest.TestCase):
                 api_base_url="https://example.com/asr",
                 api_key="test-key",
                 api_model="speech-model",
+                websocket_url="wss://example.com/realtime",
+                websocket_model="realtime-model",
+                realtime_chunk_ms=100,
             )
         )
 
@@ -54,12 +57,25 @@ class CoreTestCase(unittest.TestCase):
         self.assertEqual(loaded.api_base_url, "https://example.com/asr")
         self.assertEqual(loaded.api_key, "test-key")
         self.assertEqual(loaded.api_model, "speech-model")
+        self.assertEqual(loaded.websocket_url, "wss://example.com/realtime")
+        self.assertEqual(loaded.websocket_model, "realtime-model")
+        self.assertEqual(loaded.realtime_chunk_ms, 100)
 
     def test_api_payload_text_extraction_supports_common_shapes(self) -> None:
         self.assertEqual(AsrEngine._extract_text_from_api_payload({"text": "你好"}), "你好")
         self.assertEqual(
             AsrEngine._extract_text_from_api_payload({"data": {"text": "你好"}}),
             "你好",
+        )
+
+    def test_websocket_message_parsing_supports_partial_and_final_text(self) -> None:
+        self.assertEqual(
+            WebSocketRealtimeAsrClient._parse_message('{"partial": "你好"}'),
+            ("你好", False),
+        )
+        self.assertEqual(
+            WebSocketRealtimeAsrClient._parse_message('{"text": "你好", "is_final": true}'),
+            ("你好", True),
         )
 
     def test_history_limit(self) -> None:

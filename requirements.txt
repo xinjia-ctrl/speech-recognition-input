@@ -4,6 +4,7 @@ numpy>=1.26
 faster-whisper>=1.0
 opencc-python-reimplemented>=0.1.7
 requests>=2.31
+websocket-client>=1.8
 pynput>=1.7
 pyperclip>=1.8
 pyautogui>=0.9
