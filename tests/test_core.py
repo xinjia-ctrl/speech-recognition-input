@@ -4,7 +4,7 @@ from pathlib import Path
 
 from app.config import Settings, SettingsStore
 from app.history import HistoryStore
-from app.text_tools import tidy_text
+from app.text_tools import tidy_text, to_simplified_chinese
 
 
 class CoreTestCase(unittest.TestCase):
@@ -16,6 +16,9 @@ class CoreTestCase(unittest.TestCase):
 
     def test_tidy_text_normalizes_spaces_and_punctuation(self) -> None:
         self.assertEqual(tidy_text("  你好   world , test. "), "你好 world， test。")
+
+    def test_to_simplified_chinese_converts_common_traditional_text(self) -> None:
+        self.assertEqual(to_simplified_chinese("語音輸入軟體，開發測試"), "语音输入软件，开发测试")
 
     def test_settings_round_trip(self) -> None:
         path = self.tmp_dir / "settings.json"

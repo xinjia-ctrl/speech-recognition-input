@@ -18,6 +18,7 @@
 - PySide6：桌面 GUI
 - sounddevice + numpy：麦克风录音与音频处理
 - faster-whisper：本地离线语音识别
+- OpenCC：繁体中文转简体中文后处理
 - pynput：全局快捷键
 - pyperclip + pyautogui：剪贴板与粘贴输入
 

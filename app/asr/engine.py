@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.text_tools import tidy_text
+from app.text_tools import tidy_text, to_simplified_chinese
 
 
 @dataclass(slots=True)
@@ -22,11 +22,13 @@ class AsrEngine:
         model_path: str = "",
         language: str = "zh",
         compute_type: str = "int8",
+        initial_prompt: str = "请使用简体中文输出，保留自然的中文标点。",
     ) -> None:
         self.model_size = model_size
         self.model_path = model_path
         self.language = language
         self.compute_type = compute_type
+        self.initial_prompt = initial_prompt
         self._model = None
 
     @property
@@ -62,9 +64,12 @@ class AsrEngine:
             segments, _info = model.transcribe(
                 str(path),
                 language=self.language,
+                task="transcribe",
+                beam_size=5,
                 vad_filter=True,
+                initial_prompt=self.initial_prompt,
             )
-            text = tidy_text("".join(segment.text for segment in segments))
+            text = to_simplified_chinese(tidy_text("".join(segment.text for segment in segments)))
             elapsed = time.perf_counter() - started_at
             return TranscriptionResult(text, elapsed, self.model_name)
         except Exception as exc:
