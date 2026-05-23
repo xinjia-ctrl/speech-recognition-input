@@ -123,9 +123,12 @@ class FloatingInputWindow(QMainWindow):
         self.provider_combo.addItems(["local", "api"])
         self.provider_combo.setCurrentText(self.settings.asr_provider)
         self.model_combo = QComboBox()
-        self.model_combo.addItems(["tiny", "base", "small", "medium"])
+        self.model_combo.addItems(["tiny", "base", "small"])
+        if self.settings.model_size not in {"tiny", "base", "small"}:
+            self.model_combo.addItem(self.settings.model_size)
         self.model_combo.setCurrentText(self.settings.model_size)
         self.model_path_input = QLineEdit(self.settings.model_path)
+        self.model_path_input.setPlaceholderText("更大模型请填写已下载的本地模型目录")
         self.language_input = QLineEdit(self.settings.language)
         self.api_base_url_input = QLineEdit(self.settings.api_base_url)
         self.api_base_url_input.setPlaceholderText("https://example.com/v1/audio/transcriptions")

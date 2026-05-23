@@ -52,8 +52,8 @@ python -m app
 
 主要配置项：
 
-- `model_size`：Whisper 模型大小，默认 `base`。
-- `model_path`：本地模型目录，留空时使用 `model_size`。
+- `model_size`：本地 Whisper 快捷模型，默认 `base`，界面默认提供 `tiny`、`base`、`small`。
+- `model_path`：本地模型目录，留空时使用 `model_size`；`medium`、`large` 等更大模型建议先下载到本地后填写路径，或改用云端 API 模式。
 - `asr_provider`：识别模式，`local` 表示本地离线识别，`api` 表示云端 API 识别。
 - `api_base_url`：云端 ASR 接口地址，API 模式必填。
 - `api_key`：云端 ASR 密钥，真实配置文件 `config/settings.json` 已被 `.gitignore` 忽略。
