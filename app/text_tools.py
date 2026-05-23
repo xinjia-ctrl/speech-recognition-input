@@ -66,7 +66,10 @@ def to_simplified_chinese(text: str) -> str:
             converted = converted.replace(source, target)
         return converted.translate(_BASIC_T2S_MAP)
 
-    return OpenCC("t2s").convert(text)
+    converted = OpenCC("t2s").convert(text)
+    for source, target in {"软体": "软件"}.items():
+        converted = converted.replace(source, target)
+    return converted
 
 
 def tidy_text(text: str) -> str:

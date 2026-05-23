@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from app.config import Settings, SettingsStore
+from app.asr import AsrEngine
 from app.history import HistoryStore
 from app.text_tools import tidy_text, to_simplified_chinese
 
@@ -30,6 +31,32 @@ class CoreTestCase(unittest.TestCase):
         self.assertEqual(loaded.model_size, "small")
         self.assertTrue(loaded.auto_insert)
         self.assertEqual(loaded.history_limit, 3)
+
+    def test_settings_round_trip_api_fields(self) -> None:
+        path = self.tmp_dir / "settings.json"
+        store = SettingsStore(path)
+        store.save(
+            Settings(
+                asr_provider="api",
+                api_base_url="https://example.com/asr",
+                api_key="test-key",
+                api_model="speech-model",
+            )
+        )
+
+        loaded = store.load()
+
+        self.assertEqual(loaded.asr_provider, "api")
+        self.assertEqual(loaded.api_base_url, "https://example.com/asr")
+        self.assertEqual(loaded.api_key, "test-key")
+        self.assertEqual(loaded.api_model, "speech-model")
+
+    def test_api_payload_text_extraction_supports_common_shapes(self) -> None:
+        self.assertEqual(AsrEngine._extract_text_from_api_payload({"text": "你好"}), "你好")
+        self.assertEqual(
+            AsrEngine._extract_text_from_api_payload({"data": {"text": "你好"}}),
+            "你好",
+        )
 
     def test_history_limit(self) -> None:
         store = HistoryStore(self.tmp_dir / "history.json", limit=2)

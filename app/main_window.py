@@ -71,9 +71,13 @@ class FloatingInputWindow(QMainWindow):
 
     def _build_engine(self) -> AsrEngine:
         return AsrEngine(
+            provider=self.settings.asr_provider,
             model_size=self.settings.model_size,
             model_path=self.settings.model_path,
             language=self.settings.language,
+            api_base_url=self.settings.api_base_url,
+            api_key=self.settings.api_key,
+            api_model=self.settings.api_model,
         )
 
     def _build_ui(self) -> None:
@@ -115,11 +119,20 @@ class FloatingInputWindow(QMainWindow):
 
         settings_page = QWidget()
         form = QFormLayout(settings_page)
+        self.provider_combo = QComboBox()
+        self.provider_combo.addItems(["local", "api"])
+        self.provider_combo.setCurrentText(self.settings.asr_provider)
         self.model_combo = QComboBox()
         self.model_combo.addItems(["tiny", "base", "small", "medium"])
         self.model_combo.setCurrentText(self.settings.model_size)
         self.model_path_input = QLineEdit(self.settings.model_path)
         self.language_input = QLineEdit(self.settings.language)
+        self.api_base_url_input = QLineEdit(self.settings.api_base_url)
+        self.api_base_url_input.setPlaceholderText("https://example.com/v1/audio/transcriptions")
+        self.api_key_input = QLineEdit(self.settings.api_key)
+        self.api_key_input.setPlaceholderText("云端 API Key，settings.json 已被忽略")
+        self.api_model_input = QLineEdit(self.settings.api_model)
+        self.api_model_input.setPlaceholderText("例如 whisper-1 或服务商模型名")
         self.hotkey_input = QLineEdit(self.settings.hotkey)
         self.auto_insert_check = QCheckBox()
         self.auto_insert_check.setChecked(self.settings.auto_insert)
@@ -128,9 +141,13 @@ class FloatingInputWindow(QMainWindow):
         self.history_limit_input.setValue(self.settings.history_limit)
         self.save_settings_button = QPushButton("保存设置")
         self.save_settings_button.clicked.connect(self.save_settings)
-        form.addRow("模型大小", self.model_combo)
+        form.addRow("识别模式", self.provider_combo)
+        form.addRow("本地模型大小", self.model_combo)
         form.addRow("本地模型路径", self.model_path_input)
         form.addRow("识别语言", self.language_input)
+        form.addRow("API 地址", self.api_base_url_input)
+        form.addRow("API Key", self.api_key_input)
+        form.addRow("API 模型", self.api_model_input)
         form.addRow("全局快捷键", self.hotkey_input)
         form.addRow("识别后自动插入", self.auto_insert_check)
         form.addRow("历史记录条数", self.history_limit_input)
@@ -233,9 +250,13 @@ class FloatingInputWindow(QMainWindow):
     @Slot()
     def save_settings(self) -> None:
         self.settings = Settings(
+            asr_provider=self.provider_combo.currentText(),
             model_size=self.model_combo.currentText(),
             model_path=self.model_path_input.text().strip(),
             language=self.language_input.text().strip() or "zh",
+            api_base_url=self.api_base_url_input.text().strip(),
+            api_key=self.api_key_input.text().strip(),
+            api_model=self.api_model_input.text().strip(),
             hotkey=self.hotkey_input.text().strip() or "ctrl+alt+space",
             auto_insert=self.auto_insert_check.isChecked(),
             history_limit=self.history_limit_input.value(),

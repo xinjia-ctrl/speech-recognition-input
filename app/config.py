@@ -11,9 +11,13 @@ DEFAULT_CONFIG_PATH = Path("config/settings.json")
 
 @dataclass(slots=True)
 class Settings:
+    asr_provider: str = "local"
     model_size: str = "base"
     model_path: str = ""
     language: str = "zh"
+    api_base_url: str = ""
+    api_key: str = ""
+    api_model: str = ""
     hotkey: str = "ctrl+alt+space"
     auto_insert: bool = False
     history_limit: int = 20

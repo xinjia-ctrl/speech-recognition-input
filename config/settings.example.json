@@ -1,7 +1,11 @@
 {
+  "asr_provider": "local",
   "model_size": "base",
   "model_path": "",
   "language": "zh",
+  "api_base_url": "",
+  "api_key": "",
+  "api_model": "",
   "hotkey": "ctrl+alt+space",
   "auto_insert": false,
   "history_limit": 20,

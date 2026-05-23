@@ -19,6 +19,7 @@
 - sounddevice + numpy：麦克风录音与音频处理
 - faster-whisper：本地离线语音识别
 - OpenCC：繁体中文转简体中文后处理
+- requests：云端 ASR API 调用
 - pynput：全局快捷键
 - pyperclip + pyautogui：剪贴板与粘贴输入
 
@@ -53,6 +54,10 @@ python -m app
 
 - `model_size`：Whisper 模型大小，默认 `base`。
 - `model_path`：本地模型目录，留空时使用 `model_size`。
+- `asr_provider`：识别模式，`local` 表示本地离线识别，`api` 表示云端 API 识别。
+- `api_base_url`：云端 ASR 接口地址，API 模式必填。
+- `api_key`：云端 ASR 密钥，真实配置文件 `config/settings.json` 已被 `.gitignore` 忽略。
+- `api_model`：云端 ASR 模型名，可按服务商要求填写。
 - `language`：识别语言，默认 `zh`。
 - `hotkey`：全局快捷键，默认 `ctrl+alt+space`。
 - `auto_insert`：识别完成后是否自动插入到当前输入位置。
