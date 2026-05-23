@@ -32,6 +32,8 @@ class GlobalHotkey:
         for part in parts:
             if part in {"ctrl", "alt", "shift"}:
                 mapped.append(f"<{part}>")
+            elif len(part) > 1:
+                mapped.append(f"<{part}>")
             else:
                 mapped.append(part)
         return "+".join(mapped)
