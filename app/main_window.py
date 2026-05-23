@@ -240,14 +240,16 @@ class FloatingInputWindow(QMainWindow):
             self._set_status("识别中，请稍候")
             return
 
+        if self.recorder.is_recording:
+            self.stop_recording()
+            return
+
+        self.apply_settings_from_form(save=False, restart_hotkey=False)
         if self.settings.asr_provider == "websocket":
             self.start_websocket_realtime()
             return
 
-        if self.recorder.is_recording:
-            self.stop_recording()
-        else:
-            self.start_recording()
+        self.start_recording()
 
     def start_websocket_realtime(self) -> None:
         config = RealtimeAsrConfig(
@@ -377,6 +379,10 @@ class FloatingInputWindow(QMainWindow):
 
     @Slot()
     def save_settings(self) -> None:
+        self.apply_settings_from_form(save=True, restart_hotkey=True)
+        self._set_status("设置已保存")
+
+    def apply_settings_from_form(self, save: bool, restart_hotkey: bool) -> None:
         self.settings = Settings(
             asr_provider=self.provider_combo.currentText(),
             model_size=self.model_combo.currentText(),
@@ -394,13 +400,14 @@ class FloatingInputWindow(QMainWindow):
             history_limit=self.history_limit_input.value(),
             sample_rate=self.settings.sample_rate,
         )
-        self.settings_store.save(self.settings)
+        if save:
+            self.settings_store.save(self.settings)
         self.asr_engine = self._build_engine()
         self.history.limit = self.settings.history_limit
-        self.hotkey.stop()
-        self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
-        self.hotkey.start()
-        self._set_status("设置已保存")
+        if restart_hotkey:
+            self.hotkey.stop()
+            self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
+            self.hotkey.start()
 
     def _refresh_history(self) -> None:
         self.history_list.clear()
