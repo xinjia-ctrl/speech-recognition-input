@@ -84,7 +84,7 @@ class FloatingBall(QPushButton):
         self._click_timer.timeout.connect(self.toggle_requested.emit)
         self.setWindowTitle("语音输入器")
         self.setFixedSize(64, 64)
-        self.setToolTip("单击开始/停止录音，双击打开面板，右键打开菜单")
+        self.setToolTip("单击弹出面板并开始/停止录音，右键打开菜单")
         self.setWindowFlags(
             Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
@@ -498,7 +498,7 @@ class FloatingInputWindow(QMainWindow):
 
     def _build_floating_ball(self) -> None:
         self.floating_ball = FloatingBall()
-        self.floating_ball.toggle_requested.connect(lambda: self.toggle_recording(show_panel=False))
+        self.floating_ball.toggle_requested.connect(lambda: self.toggle_recording(show_panel=True))
         self.floating_ball.panel_requested.connect(self.show_window)
         self.floating_ball.quit_requested.connect(self.quit_app)
         self.floating_ball.move(80, 160)
@@ -521,11 +521,11 @@ class FloatingInputWindow(QMainWindow):
         if recording:
             self.record_button.setText("停止录音")
             self.record_button.setObjectName("recordingButton")
-            self._set_ball_state("recording", "停", "录音中：单击停止录音")
+            self._set_ball_state("recording", "停", "录音中：单击弹出面板并停止录音")
         else:
             self.record_button.setText("开始说话")
             self.record_button.setObjectName("primaryButton")
-            self._set_ball_state("idle", "录", "单击开始录音，双击打开面板")
+            self._set_ball_state("idle", "录", "单击弹出面板并开始录音")
         self.record_button.style().unpolish(self.record_button)
         self.record_button.style().polish(self.record_button)
 
@@ -783,7 +783,10 @@ class FloatingInputWindow(QMainWindow):
 
     @Slot()
     def show_window(self) -> None:
-        self.show()
+        if self.isMinimized():
+            self.showNormal()
+        else:
+            self.show()
         self.raise_()
         self.activateWindow()
 
