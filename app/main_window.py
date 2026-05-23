@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -88,7 +89,7 @@ class FloatingInputWindow(QMainWindow):
         self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
 
         self.setWindowTitle("语音输入器")
-        self.setMinimumSize(460, 360)
+        self.setMinimumSize(520, 420)
         self._build_ui()
         self._build_tray()
         self._refresh_history()
@@ -112,18 +113,51 @@ class FloatingInputWindow(QMainWindow):
     def _build_ui(self) -> None:
         root = QWidget()
         layout = QVBoxLayout(root)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
 
         self.status_label = QLabel()
+        self.status_label.setObjectName("statusLabel")
+        self.mode_badge = QLabel()
+        self.mode_badge.setObjectName("badge")
+        self.language_badge = QLabel()
+        self.language_badge.setObjectName("badge")
+        self.connection_badge = QLabel("待机")
+        self.connection_badge.setObjectName("badge")
+        self.feedback_label = QLabel()
+        self.feedback_label.setObjectName("feedbackLabel")
+        self.feedback_label.setVisible(False)
+
+        header = QFrame()
+        header.setObjectName("header")
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(14, 12, 14, 12)
+        header_layout.setSpacing(8)
+        badge_layout = QHBoxLayout()
+        badge_layout.setSpacing(8)
+        badge_layout.addWidget(self.mode_badge)
+        badge_layout.addWidget(self.language_badge)
+        badge_layout.addWidget(self.connection_badge)
+        badge_layout.addStretch()
+        header_layout.addLayout(badge_layout)
+        header_layout.addWidget(self.status_label)
+        header_layout.addWidget(self.feedback_label)
+
         self.text_edit = QTextEdit()
+        self.text_edit.setObjectName("resultEdit")
         self.text_edit.setPlaceholderText("识别结果会显示在这里，也可以手动编辑后复制或插入。")
 
-        self.record_button = QPushButton("开始录音")
+        self.record_button = QPushButton("开始说话")
+        self.record_button.setObjectName("primaryButton")
         self.record_button.clicked.connect(self.toggle_recording)
         self.tidy_button = QPushButton("整理文本")
+        self.tidy_button.setObjectName("secondaryButton")
         self.tidy_button.clicked.connect(self.tidy_current_text)
         self.copy_button = QPushButton("复制")
+        self.copy_button.setObjectName("secondaryButton")
         self.copy_button.clicked.connect(self.copy_text)
         self.paste_button = QPushButton("插入")
+        self.paste_button.setObjectName("accentButton")
         self.paste_button.clicked.connect(self.paste_text)
 
         button_layout = QHBoxLayout()
@@ -134,7 +168,9 @@ class FloatingInputWindow(QMainWindow):
 
         input_page = QWidget()
         input_layout = QVBoxLayout(input_page)
-        input_layout.addWidget(self.status_label)
+        input_layout.setContentsMargins(0, 0, 0, 0)
+        input_layout.setSpacing(12)
+        input_layout.addWidget(header)
         input_layout.addWidget(self.text_edit)
         input_layout.addLayout(button_layout)
 
@@ -204,11 +240,132 @@ class FloatingInputWindow(QMainWindow):
         form.addRow(self.save_settings_button)
 
         tabs = QTabWidget()
+        tabs.setObjectName("mainTabs")
         tabs.addTab(input_page, "输入")
         tabs.addTab(history_page, "历史")
         tabs.addTab(settings_page, "设置")
         layout.addWidget(tabs)
         self.setCentralWidget(root)
+        self._apply_styles()
+        self._update_context_badges()
+
+    def _apply_styles(self) -> None:
+        self.setStyleSheet(
+            """
+            QMainWindow {
+                background: #f4f6f8;
+            }
+            QTabWidget::pane {
+                border: 1px solid #d9dee7;
+                border-radius: 8px;
+                background: #ffffff;
+                top: -1px;
+            }
+            QTabBar::tab {
+                min-width: 76px;
+                padding: 8px 14px;
+                color: #5d6675;
+                background: #e9edf3;
+                border: 1px solid #d9dee7;
+                border-bottom: none;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                margin-right: 4px;
+            }
+            QTabBar::tab:selected {
+                color: #172033;
+                background: #ffffff;
+            }
+            QFrame#header {
+                border: 1px solid #d9dee7;
+                border-radius: 8px;
+                background: #fbfcfe;
+            }
+            QLabel#statusLabel {
+                color: #172033;
+                font-size: 15px;
+                font-weight: 600;
+            }
+            QLabel#feedbackLabel {
+                color: #0f766e;
+                background: #e8f7f4;
+                border: 1px solid #b8e3dc;
+                border-radius: 6px;
+                padding: 6px 8px;
+            }
+            QLabel#badge {
+                color: #384153;
+                background: #eef2f7;
+                border: 1px solid #d8dee9;
+                border-radius: 6px;
+                padding: 4px 8px;
+            }
+            QTextEdit#resultEdit {
+                border: 1px solid #d4dbe6;
+                border-radius: 8px;
+                padding: 10px;
+                font-size: 15px;
+                color: #172033;
+                background: #ffffff;
+                selection-background-color: #bfd7ff;
+            }
+            QPushButton {
+                min-height: 34px;
+                border-radius: 7px;
+                padding: 7px 12px;
+                font-weight: 600;
+            }
+            QPushButton#primaryButton {
+                color: #ffffff;
+                background: #2563eb;
+                border: 1px solid #1d4ed8;
+            }
+            QPushButton#primaryButton:hover {
+                background: #1d4ed8;
+            }
+            QPushButton#recordingButton {
+                color: #ffffff;
+                background: #dc2626;
+                border: 1px solid #b91c1c;
+            }
+            QPushButton#recordingButton:hover {
+                background: #b91c1c;
+            }
+            QPushButton#accentButton {
+                color: #ffffff;
+                background: #0f766e;
+                border: 1px solid #0f6a62;
+            }
+            QPushButton#accentButton:hover {
+                background: #0d625b;
+            }
+            QPushButton#secondaryButton {
+                color: #243044;
+                background: #ffffff;
+                border: 1px solid #cfd7e3;
+            }
+            QPushButton#secondaryButton:hover {
+                background: #f2f5f9;
+            }
+            QPushButton:disabled {
+                color: #8a94a6;
+                background: #edf1f5;
+                border: 1px solid #d7dee8;
+            }
+            QLineEdit, QComboBox, QSpinBox {
+                min-height: 28px;
+                border: 1px solid #cfd7e3;
+                border-radius: 6px;
+                padding: 4px 7px;
+                background: #ffffff;
+            }
+            QListWidget {
+                border: 1px solid #d4dbe6;
+                border-radius: 8px;
+                background: #ffffff;
+            }
+            """
+        )
 
     def _build_tray(self) -> None:
         self.tray = QSystemTrayIcon(self)
@@ -231,6 +388,40 @@ class FloatingInputWindow(QMainWindow):
 
     def _set_status(self, text: str) -> None:
         self.status_label.setText(text)
+
+    def _set_feedback(self, text: str, is_error: bool = False) -> None:
+        self.feedback_label.setText(text)
+        self.feedback_label.setVisible(bool(text))
+        if is_error:
+            self.feedback_label.setStyleSheet(
+                "color: #991b1b; background: #fef2f2; border: 1px solid #fecaca;"
+            )
+        else:
+            self.feedback_label.setStyleSheet("")
+
+    def _set_record_button_state(self, recording: bool) -> None:
+        if recording:
+            self.record_button.setText("停止录音")
+            self.record_button.setObjectName("recordingButton")
+        else:
+            self.record_button.setText("开始说话")
+            self.record_button.setObjectName("primaryButton")
+        self.record_button.style().unpolish(self.record_button)
+        self.record_button.style().polish(self.record_button)
+
+    def _set_actions_enabled(self, enabled: bool) -> None:
+        self.tidy_button.setEnabled(enabled)
+        self.copy_button.setEnabled(enabled)
+        self.paste_button.setEnabled(enabled)
+
+    def _update_context_badges(self) -> None:
+        if not hasattr(self, "mode_badge"):
+            return
+        self.mode_badge.setText(f"模式：{self._provider_label()}")
+        self.language_badge.setText(f"语言：{self._language_label()}")
+
+    def _set_connection_state(self, text: str) -> None:
+        self.connection_badge.setText(text)
 
     @Slot()
     def toggle_recording(self) -> None:
@@ -270,30 +461,39 @@ class FloatingInputWindow(QMainWindow):
         self.realtime_worker.error.connect(self.on_realtime_error)
         self.realtime_worker.finished.connect(self.on_realtime_finished)
         self.realtime_worker.start()
-        self.record_button.setText("停止录音")
+        self._set_record_button_state(recording=True)
+        self._set_actions_enabled(False)
+        self._set_connection_state("连接中")
+        self._set_feedback("实时模式已启动，正在等待语音输入")
         self._set_status("实时识别中：正在通过 WebSocket 边说边出字")
 
     def stop_websocket_realtime(self) -> None:
         if self.realtime_worker is not None:
             self.realtime_worker.stop()
-        self.record_button.setText("开始录音")
+        self._set_record_button_state(recording=False)
+        self._set_connection_state("结束中")
         self._set_status("停止录音：正在结束 WebSocket 实时识别")
 
     @Slot(str)
     def on_realtime_partial(self, text: str) -> None:
         self.text_edit.setPlainText(text)
         self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+        self._set_connection_state("识别中")
+        self._set_feedback("正在实时输出识别结果")
 
     @Slot(str)
     def on_realtime_final(self, text: str) -> None:
         self.text_edit.setPlainText(text)
         self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+        self._set_connection_state("完成")
 
     @Slot(str)
     def on_realtime_error(self, message: str) -> None:
         self.realtime_failed = True
         self._show_error(message)
-        self.record_button.setText("开始录音")
+        self._set_record_button_state(recording=False)
+        self._set_actions_enabled(True)
+        self._set_connection_state("错误")
         self._set_status("错误：WebSocket 实时识别失败")
 
     @Slot()
@@ -308,8 +508,11 @@ class FloatingInputWindow(QMainWindow):
             self._refresh_history()
             if self.settings.auto_insert:
                 self.paste_text()
-        self.record_button.setText("开始录音")
+        self._set_record_button_state(recording=False)
+        self._set_actions_enabled(True)
+        self._set_connection_state("待机")
         self.realtime_worker = None
+        self._set_feedback("实时识别已完成")
         self._set_status("完成：WebSocket 实时识别已结束")
 
     def start_recording(self) -> None:
@@ -320,7 +523,10 @@ class FloatingInputWindow(QMainWindow):
             return
 
         self.text_edit.clear()
-        self.record_button.setText("停止录音")
+        self._set_record_button_state(recording=True)
+        self._set_actions_enabled(False)
+        self._set_connection_state("录音中")
+        self._set_feedback("正在录音，结束后会自动识别")
         self._set_status("录音中：再次点击或按快捷键停止")
 
     def stop_recording(self) -> None:
@@ -328,10 +534,15 @@ class FloatingInputWindow(QMainWindow):
             audio_path = self.recorder.stop()
         except RecordingError as exc:
             self._show_error(str(exc))
-            self.record_button.setText("开始录音")
+            self._set_record_button_state(recording=False)
+            self._set_actions_enabled(True)
+            self._set_connection_state("错误")
             return
 
-        self.record_button.setText("开始录音")
+        self._set_record_button_state(recording=False)
+        self._set_actions_enabled(False)
+        self._set_connection_state("识别中")
+        self._set_feedback("录音已结束，正在生成文字")
         self._set_status(f"识别中：正在使用{self._provider_label()}转写")
         self.worker = TranscribeWorker(self.asr_engine, audio_path)
         self.worker.partial.connect(self.on_transcription_partial)
@@ -347,12 +558,17 @@ class FloatingInputWindow(QMainWindow):
     def on_transcription_finished(self, result: TranscriptionResult) -> None:
         if result.error:
             self._show_error(result.error)
+            self._set_actions_enabled(True)
+            self._set_connection_state("错误")
             self._set_status("错误：识别失败")
             return
 
         self.text_edit.setPlainText(result.text)
         self.history.add(result.text)
         self._refresh_history()
+        self._set_actions_enabled(True)
+        self._set_connection_state("待机")
+        self._set_feedback("识别完成，可以编辑、复制或插入")
         self._set_status(
             f"完成：{self._provider_label()} {result.model_name}，耗时 {result.elapsed_seconds:.1f}s"
         )
@@ -362,11 +578,13 @@ class FloatingInputWindow(QMainWindow):
     @Slot()
     def tidy_current_text(self) -> None:
         self.text_edit.setPlainText(tidy_text(self.text_edit.toPlainText()))
+        self._set_feedback("文本已整理")
 
     @Slot()
     def copy_text(self) -> None:
         try:
             self.injector.copy(self.text_edit.toPlainText())
+            self._set_feedback("已复制到剪贴板")
             self._set_status("已复制到剪贴板")
         except RuntimeError as exc:
             self._show_error(str(exc))
@@ -375,6 +593,7 @@ class FloatingInputWindow(QMainWindow):
     def paste_text(self) -> None:
         try:
             self.injector.paste(self.text_edit.toPlainText())
+            self._set_feedback("已插入到当前输入位置")
             self._set_status("已插入到当前输入位置")
         except RuntimeError as exc:
             self._show_error(str(exc))
@@ -382,6 +601,8 @@ class FloatingInputWindow(QMainWindow):
     @Slot()
     def save_settings(self) -> None:
         self.apply_settings_from_form(save=True, restart_hotkey=True)
+        self._update_context_badges()
+        self._set_feedback("设置已保存，下一次识别会使用新配置")
         self._set_status("设置已保存")
 
     def apply_settings_from_form(self, save: bool, restart_hotkey: bool) -> None:
@@ -402,6 +623,7 @@ class FloatingInputWindow(QMainWindow):
             history_limit=self.history_limit_input.value(),
             sample_rate=self.settings.sample_rate,
         )
+        self._update_context_badges()
         if save:
             self.settings_store.save(self.settings)
         self.asr_engine = self._build_engine()
@@ -417,6 +639,7 @@ class FloatingInputWindow(QMainWindow):
             self.history_list.addItem(item.text)
 
     def _show_error(self, message: str) -> None:
+        self._set_feedback(message, is_error=True)
         QMessageBox.warning(self, "提示", message)
 
     @Slot(object)
@@ -439,6 +662,11 @@ class FloatingInputWindow(QMainWindow):
         if self.settings.asr_provider == "websocket":
             return "WebSocket 实时识别"
         return "本地模型"
+
+    def _language_label(self) -> str:
+        if self.settings.language == "en":
+            return "English"
+        return "中文"
 
     def closeEvent(self, event) -> None:
         self.hide()
