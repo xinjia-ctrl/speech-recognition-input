@@ -9,7 +9,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from app.text_tools import redact_secret, tidy_text, to_simplified_chinese
+from app.text_tools import (
+    redact_secret,
+    remove_cjk_false_positive_text,
+    tidy_text,
+    to_simplified_chinese,
+)
 
 
 @dataclass(slots=True)
@@ -220,6 +225,7 @@ class WebSocketRealtimeAsrClient:
                             "parameters": {
                                 "format": "pcm",
                                 "sample_rate": self.config.sample_rate,
+                                "language_hints": [self.config.language],
                                 "disfluency_removal_enabled": False,
                                 "semantic_punctuation_enabled": True,
                             },
@@ -301,7 +307,7 @@ class WebSocketRealtimeAsrClient:
         sentence = output.get("sentence") or {}
         text = sentence.get("text", "")
         is_final = bool(sentence.get("sentence_end") or sentence.get("end_time") is not None)
-        return event, to_simplified_chinese(tidy_text(text)), is_final, ""
+        return event, normalize_realtime_text(text), is_final, ""
 
     @staticmethod
     def _parse_message(message: str | bytes) -> tuple[str, bool]:
@@ -311,7 +317,7 @@ class WebSocketRealtimeAsrClient:
         try:
             payload = json.loads(message)
         except json.JSONDecodeError:
-            return to_simplified_chinese(tidy_text(message)), True
+            return normalize_realtime_text(message), True
 
         text = WebSocketRealtimeAsrClient._extract_text(payload)
         if not text:
@@ -323,7 +329,7 @@ class WebSocketRealtimeAsrClient:
             or payload.get("completed")
             or payload.get("type") in {"final", "completed", "end"}
         )
-        return to_simplified_chinese(text), is_final
+        return normalize_realtime_text(text), is_final
 
     @staticmethod
     def _extract_text(payload: dict[str, Any]) -> str:
@@ -340,3 +346,7 @@ class WebSocketRealtimeAsrClient:
                     return nested
 
         return ""
+
+
+def normalize_realtime_text(text: str) -> str:
+    return to_simplified_chinese(tidy_text(remove_cjk_false_positive_text(text)))

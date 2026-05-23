@@ -5,7 +5,12 @@ from pathlib import Path
 from app.config import Settings, SettingsStore
 from app.asr import AsrEngine, WebSocketRealtimeAsrClient
 from app.history import HistoryStore
-from app.text_tools import redact_secret, tidy_text, to_simplified_chinese
+from app.text_tools import (
+    redact_secret,
+    remove_cjk_false_positive_text,
+    tidy_text,
+    to_simplified_chinese,
+)
 
 
 class CoreTestCase(unittest.TestCase):
@@ -24,6 +29,9 @@ class CoreTestCase(unittest.TestCase):
     def test_redact_secret_masks_common_api_key_patterns(self) -> None:
         text = "Authorization: Bearer sk-test-secret-token"
         self.assertEqual(redact_secret(text), "Authorization: ***")
+
+    def test_remove_cjk_false_positive_text_filters_kana_and_hangul(self) -> None:
+        self.assertEqual(remove_cjk_false_positive_text("你好こんにちは안녕世界"), "你好世界")
 
     def test_settings_round_trip(self) -> None:
         path = self.tmp_dir / "settings.json"
