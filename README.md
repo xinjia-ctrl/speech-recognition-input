@@ -1,6 +1,6 @@
 # 语音输入器
 
-一个面向 Windows 桌面的语音输入法原型。用户可以通过悬浮窗或全局快捷键录音，使用本地离线模型或云端 ASR API 识别中文语音，并将结果复制或插入到当前输入位置。
+一个面向 Windows 桌面的语音输入法原型。用户可以通过悬浮窗或全局快捷键录音，使用本地离线模型、HTTP 云端 API 或 WebSocket 实时识别中文语音，并将结果复制或插入到当前输入位置。
 
 ## 功能特性
 
@@ -8,8 +8,7 @@
 - 麦克风录音并保存为临时 WAV 音频。
 - 使用 `faster-whisper` 进行本地离线中文语音识别。
 - 识别结果可编辑、整理、复制和插入。
-- 支持分段实时识别：录音过程中按时间片识别并逐步追加文本。
-- 支持 WebSocket 实时识别模式，适配可接收 PCM 音频流的实时 ASR 服务。
+- 支持三种识别模式：本地兜底、HTTP API 一次性识别、WebSocket 实时识别。
 - 支持全局快捷键开始/停止录音。
 - 保存最近语音输入历史。
 - 设置模型大小、模型路径、语言、快捷键和自动插入。
@@ -57,7 +56,7 @@ python -m app
 
 - `model_size`：本地 Whisper 快捷模型，默认 `base`，界面默认提供 `tiny`、`base`、`small`。
 - `model_path`：本地模型目录，留空时使用 `model_size`；`medium`、`large` 等更大模型建议先下载到本地后填写路径，或改用云端 API 模式。
-- `asr_provider`：识别模式，`local` 表示本地离线识别，`api` 表示云端 API 识别。
+- `asr_provider`：识别模式，`local` 表示本地离线识别，`api` 表示 HTTP 云端 API 识别，`websocket` 表示 WebSocket 实时识别。
 - `api_base_url`：云端 ASR 接口地址，API 模式必填。
 - `api_key`：云端 ASR 密钥，真实配置文件 `config/settings.json` 已被 `.gitignore` 忽略。
 - `api_model`：云端 ASR 模型名，可按服务商要求填写。
