@@ -58,7 +58,7 @@ class FloatingInputWindow(QMainWindow):
         self.hotkey_pressed.connect(self.toggle_recording)
         self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
 
-        self.setWindowTitle("离线语音输入器")
+        self.setWindowTitle("语音输入器")
         self.setMinimumSize(460, 360)
         self._build_ui()
         self._build_tray()
@@ -212,7 +212,7 @@ class FloatingInputWindow(QMainWindow):
             return
 
         self.record_button.setText("开始录音")
-        self._set_status("识别中：正在加载离线模型并转写")
+        self._set_status(f"识别中：正在使用{self._provider_label()}转写")
         self.worker = TranscribeWorker(self.asr_engine, audio_path)
         self.worker.finished.connect(self.on_transcription_finished)
         self.worker.start()
@@ -227,7 +227,9 @@ class FloatingInputWindow(QMainWindow):
         self.text_edit.setPlainText(result.text)
         self.history.add(result.text)
         self._refresh_history()
-        self._set_status(f"完成：模型 {result.model_name}，耗时 {result.elapsed_seconds:.1f}s")
+        self._set_status(
+            f"完成：{self._provider_label()} {result.model_name}，耗时 {result.elapsed_seconds:.1f}s"
+        )
         if self.settings.auto_insert and result.text:
             self.paste_text()
 
@@ -281,6 +283,11 @@ class FloatingInputWindow(QMainWindow):
 
     def _show_error(self, message: str) -> None:
         QMessageBox.warning(self, "提示", message)
+
+    def _provider_label(self) -> str:
+        if self.settings.asr_provider == "api":
+            return "云端 API"
+        return "本地模型"
 
     def closeEvent(self, event) -> None:
         self.hide()

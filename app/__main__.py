@@ -15,7 +15,7 @@ def main() -> int:
     from app.main_window import FloatingInputWindow
 
     app = QApplication(sys.argv)
-    app.setApplicationName("离线语音输入器")
+    app.setApplicationName("语音输入器")
     app.setQuitOnLastWindowClosed(False)
 
     settings_store = SettingsStore()
