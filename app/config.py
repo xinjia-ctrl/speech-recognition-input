@@ -26,6 +26,7 @@ class Settings:
     websocket_final_wait_ms: int = 1500
     hotkey: str = "ctrl+alt+space"
     auto_insert: bool = False
+    preview_before_insert: bool = True
     history_limit: int = 20
     sample_rate: int = 16000
 

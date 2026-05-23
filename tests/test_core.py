@@ -63,6 +63,7 @@ class CoreTestCase(unittest.TestCase):
                 websocket_model="realtime-model",
                 realtime_chunk_ms=100,
                 websocket_final_wait_ms=1200,
+                preview_before_insert=False,
             )
         )
 
@@ -77,6 +78,7 @@ class CoreTestCase(unittest.TestCase):
         self.assertEqual(loaded.websocket_model, "realtime-model")
         self.assertEqual(loaded.realtime_chunk_ms, 100)
         self.assertEqual(loaded.websocket_final_wait_ms, 1200)
+        self.assertFalse(loaded.preview_before_insert)
 
     def test_realtime_config_defaults_to_short_final_wait(self) -> None:
         settings = Settings()
