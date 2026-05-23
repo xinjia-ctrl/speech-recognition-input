@@ -3,6 +3,11 @@ from __future__ import annotations
 import re
 
 
+_SECRET_PATTERNS = (
+    re.compile(r"Bearer\s+[A-Za-z0-9._\-]+", re.IGNORECASE),
+    re.compile(r"sk-[A-Za-z0-9_\-]{6,}"),
+)
+
 _BASIC_T2S_MAP = str.maketrans(
     {
         "語": "语",
@@ -55,6 +60,13 @@ _BASIC_T2S_MAP = str.maketrans(
 _BASIC_T2S_PHRASES = {
     "軟體": "软件",
 }
+
+
+def redact_secret(text: str) -> str:
+    redacted = text
+    for pattern in _SECRET_PATTERNS:
+        redacted = pattern.sub("***", redacted)
+    return redacted
 
 
 def to_simplified_chinese(text: str) -> str:

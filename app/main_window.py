@@ -133,6 +133,7 @@ class FloatingInputWindow(QMainWindow):
         self.api_base_url_input = QLineEdit(self.settings.api_base_url)
         self.api_base_url_input.setPlaceholderText("https://example.com/v1/audio/transcriptions")
         self.api_key_input = QLineEdit(self.settings.api_key)
+        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key_input.setPlaceholderText("云端 API Key，settings.json 已被忽略")
         self.api_model_input = QLineEdit(self.settings.api_model)
         self.api_model_input.setPlaceholderText("例如 whisper-1 或服务商模型名")

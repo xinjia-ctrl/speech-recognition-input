@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.text_tools import tidy_text, to_simplified_chinese
+from app.text_tools import redact_secret, tidy_text, to_simplified_chinese
 
 
 @dataclass(slots=True)
@@ -80,7 +80,7 @@ class AsrEngine:
             return self._transcribe_with_local_model(path, started_at)
         except Exception as exc:
             elapsed = time.perf_counter() - started_at
-            return TranscriptionResult("", elapsed, self.model_name, str(exc))
+            return TranscriptionResult("", elapsed, self.model_name, redact_secret(str(exc)))
 
     def _transcribe_with_local_model(
         self,

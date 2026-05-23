@@ -5,7 +5,7 @@ from pathlib import Path
 from app.config import Settings, SettingsStore
 from app.asr import AsrEngine
 from app.history import HistoryStore
-from app.text_tools import tidy_text, to_simplified_chinese
+from app.text_tools import redact_secret, tidy_text, to_simplified_chinese
 
 
 class CoreTestCase(unittest.TestCase):
@@ -20,6 +20,10 @@ class CoreTestCase(unittest.TestCase):
 
     def test_to_simplified_chinese_converts_common_traditional_text(self) -> None:
         self.assertEqual(to_simplified_chinese("語音輸入軟體，開發測試"), "语音输入软件，开发测试")
+
+    def test_redact_secret_masks_common_api_key_patterns(self) -> None:
+        text = "Authorization: Bearer sk-test-secret-token"
+        self.assertEqual(redact_secret(text), "Authorization: ***")
 
     def test_settings_round_trip(self) -> None:
         path = self.tmp_dir / "settings.json"
