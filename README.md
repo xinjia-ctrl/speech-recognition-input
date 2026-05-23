@@ -112,6 +112,8 @@ tests/
 
 WebSocket 模式会在连接建立后发送一条 JSON 启动消息，然后持续发送 `pcm_s16le` 二进制音频块，停止时发送 `{"type": "end"}`。服务端返回 JSON 时，程序会优先读取 `text`、`transcript`、`transcription` 或 `partial` 字段，并根据 `is_final`、`final`、`completed` 或 `type=final` 判断是否为最终文本。
 
+如果 WebSocket 地址包含 `dashscope` 或阿里云 `api-ws`，程序会自动使用百炼 Paraformer 实时识别协议：发送 `run-task`，等待 `task-started` 后上传音频，停止时发送 `finish-task`，并解析 `result-generated` 事件。
+
 ## 测试说明
 
 当前测试覆盖配置读写、历史记录数量限制和文本整理逻辑：

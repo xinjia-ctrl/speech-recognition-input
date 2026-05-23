@@ -80,6 +80,23 @@ class CoreTestCase(unittest.TestCase):
             ("你好", True),
         )
 
+    def test_dashscope_message_parsing_supports_result_generated(self) -> None:
+        message = (
+            '{"header":{"event":"result-generated"},'
+            '"payload":{"output":{"sentence":{"text":"你好","sentence_end":true}}}}'
+        )
+        self.assertEqual(
+            WebSocketRealtimeAsrClient._parse_dashscope_message(message),
+            ("result-generated", "你好", True, ""),
+        )
+
+    def test_dashscope_url_detection(self) -> None:
+        self.assertTrue(
+            WebSocketRealtimeAsrClient._is_dashscope_url(
+                "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+            )
+        )
+
     def test_history_limit(self) -> None:
         store = HistoryStore(self.tmp_dir / "history.json", limit=2)
 

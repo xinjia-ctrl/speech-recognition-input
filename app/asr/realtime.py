@@ -4,6 +4,7 @@ import json
 import queue
 import threading
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -47,6 +48,20 @@ class WebSocketRealtimeAsrClient:
             on_error(f"缺少实时识别依赖，请先安装：pip install -r requirements.txt；{exc}")
             return
 
+        if self._is_dashscope_url(self.config.websocket_url):
+            self._run_dashscope(websocket, sd, on_partial, on_final, on_error)
+            return
+
+        self._run_generic(websocket, sd, on_partial, on_final, on_error)
+
+    def _run_generic(
+        self,
+        websocket,
+        sd,
+        on_partial: Callable[[str], None],
+        on_final: Callable[[str], None],
+        on_error: Callable[[str], None],
+    ) -> None:
         audio_queue: queue.Queue[bytes] = queue.Queue()
         ws = None
         receiver_thread = None
@@ -129,6 +144,164 @@ class WebSocketRealtimeAsrClient:
                     pass
             if receiver_thread is not None:
                 receiver_thread.join(timeout=1)
+
+    def _run_dashscope(
+        self,
+        websocket,
+        sd,
+        on_partial: Callable[[str], None],
+        on_final: Callable[[str], None],
+        on_error: Callable[[str], None],
+    ) -> None:
+        audio_queue: queue.Queue[bytes] = queue.Queue()
+        ws = None
+        receiver_thread = None
+        task_started = threading.Event()
+        task_done = threading.Event()
+        task_id = str(uuid.uuid4())
+        final_texts: list[str] = []
+
+        def callback(indata, frames, time_info, status) -> None:
+            if status:
+                return
+            audio_queue.put(bytes(indata))
+
+        def receiver() -> None:
+            while not self._stop_event.is_set():
+                try:
+                    message = ws.recv()
+                except Exception:
+                    break
+
+                event, text, is_final, error = self._parse_dashscope_message(message)
+                if event == "task-started":
+                    task_started.set()
+                    continue
+                if event == "task-finished":
+                    task_done.set()
+                    break
+                if event == "task-failed":
+                    on_error(error or "百炼实时识别任务失败")
+                    task_done.set()
+                    break
+                if event != "result-generated" or not text:
+                    continue
+
+                if is_final:
+                    final_texts.append(text)
+                    on_final(tidy_text("".join(final_texts)))
+                else:
+                    on_partial(tidy_text("".join(final_texts) + text))
+
+        try:
+            headers = []
+            if self.config.api_key:
+                headers.append(f"Authorization: Bearer {self.config.api_key}")
+            headers.append("X-DashScope-DataInspection: enable")
+
+            ws = websocket.create_connection(
+                self.config.websocket_url,
+                header=headers,
+                timeout=10,
+            )
+            ws.send(
+                json.dumps(
+                    {
+                        "header": {
+                            "action": "run-task",
+                            "task_id": task_id,
+                            "streaming": "duplex",
+                        },
+                        "payload": {
+                            "task_group": "audio",
+                            "task": "asr",
+                            "function": "recognition",
+                            "model": self.config.model or "paraformer-realtime-v2",
+                            "parameters": {
+                                "format": "pcm",
+                                "sample_rate": self.config.sample_rate,
+                                "disfluency_removal_enabled": False,
+                                "semantic_punctuation_enabled": True,
+                            },
+                            "input": {},
+                        },
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+            receiver_thread = threading.Thread(target=receiver, daemon=True)
+            receiver_thread.start()
+            if not task_started.wait(timeout=10):
+                raise RuntimeError("等待百炼 task-started 超时，请检查 WebSocket 地址、Key 和模型名")
+
+            blocksize = max(1, int(self.config.sample_rate * self.config.chunk_ms / 1000))
+            with sd.RawInputStream(
+                samplerate=self.config.sample_rate,
+                channels=self.config.channels,
+                dtype="int16",
+                blocksize=blocksize,
+                callback=callback,
+            ):
+                while not self._stop_event.is_set():
+                    try:
+                        chunk = audio_queue.get(timeout=0.1)
+                    except queue.Empty:
+                        continue
+                    ws.send_binary(chunk)
+
+            ws.send(
+                json.dumps(
+                    {
+                        "header": {
+                            "action": "finish-task",
+                            "task_id": task_id,
+                            "streaming": "duplex",
+                        },
+                        "payload": {"input": {}},
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            task_done.wait(timeout=10)
+        except Exception as exc:
+            on_error(redact_secret(str(exc)))
+        finally:
+            self._stop_event.set()
+            if ws is not None:
+                try:
+                    ws.close()
+                except Exception:
+                    pass
+            if receiver_thread is not None:
+                receiver_thread.join(timeout=1)
+
+    @staticmethod
+    def _is_dashscope_url(url: str) -> bool:
+        return "dashscope" in url.lower() or "aliyuncs.com/api-ws" in url.lower()
+
+    @staticmethod
+    def _parse_dashscope_message(message: str | bytes) -> tuple[str, str, bool, str]:
+        if isinstance(message, bytes):
+            return "", "", False, ""
+
+        try:
+            payload = json.loads(message)
+        except json.JSONDecodeError:
+            return "", "", False, ""
+
+        header = payload.get("header") or {}
+        body = payload.get("payload") or {}
+        event = header.get("event", "")
+        if event == "task-failed":
+            error = body.get("message") or body.get("error") or header.get("error_message") or ""
+            return event, "", False, redact_secret(str(error))
+
+        output = body.get("output") or {}
+        sentence = output.get("sentence") or {}
+        text = sentence.get("text", "")
+        is_final = bool(sentence.get("sentence_end") or sentence.get("end_time") is not None)
+        return event, to_simplified_chinese(tidy_text(text)), is_final, ""
 
     @staticmethod
     def _parse_message(message: str | bytes) -> tuple[str, bool]:
