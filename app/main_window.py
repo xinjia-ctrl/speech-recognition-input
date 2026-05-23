@@ -55,6 +55,7 @@ class FloatingInputWindow(QMainWindow):
         self.history = HistoryStore(limit=self.settings.history_limit)
         self.asr_engine = self._build_engine()
         self.worker: TranscribeWorker | None = None
+        self._close_tip_shown = False
         self.hotkey_pressed.connect(self.toggle_recording)
         self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
 
@@ -167,13 +168,17 @@ class FloatingInputWindow(QMainWindow):
     def _build_tray(self) -> None:
         self.tray = QSystemTrayIcon(self)
         self.tray.setIcon(self.style().standardIcon(self.style().StandardPixmap.SP_ComputerIcon))
+        self.tray.activated.connect(self.on_tray_activated)
         menu = QMenu(self)
 
         show_action = QAction("显示窗口", self)
-        show_action.triggered.connect(self.show)
+        show_action.triggered.connect(self.show_window)
+        record_action = QAction("开始/停止录音", self)
+        record_action.triggered.connect(self.toggle_recording)
         quit_action = QAction("退出", self)
         quit_action.triggered.connect(self.quit_app)
         menu.addAction(show_action)
+        menu.addAction(record_action)
         menu.addAction(quit_action)
 
         self.tray.setContextMenu(menu)
@@ -184,6 +189,7 @@ class FloatingInputWindow(QMainWindow):
 
     @Slot()
     def toggle_recording(self) -> None:
+        self.show_window()
         if self.worker is not None and self.worker.isRunning():
             self._set_status("识别中，请稍候")
             return
@@ -284,6 +290,20 @@ class FloatingInputWindow(QMainWindow):
     def _show_error(self, message: str) -> None:
         QMessageBox.warning(self, "提示", message)
 
+    @Slot(object)
+    def on_tray_activated(self, reason) -> None:
+        if reason in {
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        }:
+            self.show_window()
+
+    @Slot()
+    def show_window(self) -> None:
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
     def _provider_label(self) -> str:
         if self.settings.asr_provider == "api":
             return "云端 API"
@@ -291,6 +311,14 @@ class FloatingInputWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self.hide()
+        if not self._close_tip_shown and self.tray.isVisible():
+            self.tray.showMessage(
+                "语音输入器仍在运行",
+                "窗口已隐藏到托盘。双击托盘图标可恢复，也可以从托盘菜单退出。",
+                QSystemTrayIcon.MessageIcon.Information,
+                3000,
+            )
+            self._close_tip_shown = True
         event.ignore()
 
     def quit_app(self) -> None:
