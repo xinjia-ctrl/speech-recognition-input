@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QThread, Signal, Slot
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -32,6 +32,7 @@ from app.text_tools import tidy_text
 
 
 class TranscribeWorker(QThread):
+    partial = Signal(str)
     finished = Signal(object)
 
     def __init__(self, engine: AsrEngine, audio_path: str) -> None:
@@ -40,7 +41,7 @@ class TranscribeWorker(QThread):
         self.audio_path = audio_path
 
     def run(self) -> None:
-        self.finished.emit(self.engine.transcribe(self.audio_path))
+        self.finished.emit(self.engine.transcribe(self.audio_path, on_partial=self.partial.emit))
 
 
 class FloatingInputWindow(QMainWindow):
@@ -219,9 +220,16 @@ class FloatingInputWindow(QMainWindow):
 
         self.record_button.setText("开始录音")
         self._set_status(f"识别中：正在使用{self._provider_label()}转写")
+        self.text_edit.clear()
         self.worker = TranscribeWorker(self.asr_engine, audio_path)
+        self.worker.partial.connect(self.on_transcription_partial)
         self.worker.finished.connect(self.on_transcription_finished)
         self.worker.start()
+
+    @Slot(str)
+    def on_transcription_partial(self, text: str) -> None:
+        self.text_edit.setPlainText(text)
+        self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
 
     @Slot(object)
     def on_transcription_finished(self, result: TranscriptionResult) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -61,7 +62,11 @@ class AsrEngine:
         self._model = WhisperModel(model_id, device="cpu", compute_type=self.compute_type)
         return self._model
 
-    def transcribe(self, audio_path: str) -> TranscriptionResult:
+    def transcribe(
+        self,
+        audio_path: str,
+        on_partial: Callable[[str], None] | None = None,
+    ) -> TranscriptionResult:
         started_at = time.perf_counter()
         path = Path(audio_path)
         if not path.exists():
@@ -77,7 +82,7 @@ class AsrEngine:
                 return self._transcribe_with_api(path, started_at)
             if self.provider != "local":
                 raise RuntimeError(f"不支持的语音识别模式：{self.provider}")
-            return self._transcribe_with_local_model(path, started_at)
+            return self._transcribe_with_local_model(path, started_at, on_partial)
         except Exception as exc:
             elapsed = time.perf_counter() - started_at
             return TranscriptionResult("", elapsed, self.model_name, redact_secret(str(exc)))
@@ -86,6 +91,7 @@ class AsrEngine:
         self,
         path: Path,
         started_at: float,
+        on_partial: Callable[[str], None] | None = None,
     ) -> TranscriptionResult:
         model = self._load_model()
         segments, _info = model.transcribe(
@@ -96,7 +102,14 @@ class AsrEngine:
             vad_filter=True,
             initial_prompt=self.initial_prompt,
         )
-        text = to_simplified_chinese(tidy_text("".join(segment.text for segment in segments)))
+        pieces = []
+        for segment in segments:
+            pieces.append(segment.text)
+            partial_text = to_simplified_chinese(tidy_text("".join(pieces)))
+            if on_partial is not None and partial_text:
+                on_partial(partial_text)
+
+        text = to_simplified_chinese(tidy_text("".join(pieces)))
         elapsed = time.perf_counter() - started_at
         return TranscriptionResult(text, elapsed, self.model_name)
 
