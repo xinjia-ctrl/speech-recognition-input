@@ -158,7 +158,9 @@ class FloatingInputWindow(QMainWindow):
         self.model_combo.setCurrentText(self.settings.model_size)
         self.model_path_input = QLineEdit(self.settings.model_path)
         self.model_path_input.setPlaceholderText("更大模型请填写已下载的本地模型目录")
-        self.language_input = QLineEdit(self.settings.language)
+        self.language_input = QComboBox()
+        self.language_input.addItems(["zh", "en"])
+        self.language_input.setCurrentText(self.settings.language if self.settings.language in {"zh", "en"} else "zh")
         self.api_base_url_input = QLineEdit(self.settings.api_base_url)
         self.api_base_url_input.setPlaceholderText("https://example.com/v1/audio/transcriptions")
         self.api_key_input = QLineEdit(self.settings.api_key)
@@ -387,7 +389,7 @@ class FloatingInputWindow(QMainWindow):
             asr_provider=self.provider_combo.currentText(),
             model_size=self.model_combo.currentText(),
             model_path=self.model_path_input.text().strip(),
-            language=self.language_input.text().strip() or "zh",
+            language=self.language_input.currentText(),
             api_base_url=self.api_base_url_input.text().strip(),
             api_key=self.api_key_input.text().strip(),
             api_model=self.api_model_input.text().strip(),

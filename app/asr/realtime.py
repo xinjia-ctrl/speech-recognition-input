@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.text_tools import (
+    filter_text_by_language,
     redact_secret,
     remove_cjk_false_positive_text,
     tidy_text,
@@ -85,6 +86,7 @@ class WebSocketRealtimeAsrClient:
                     break
 
                 text, is_final = self._parse_message(message)
+                text = self._normalize_text(text)
                 if not text:
                     continue
 
@@ -179,6 +181,7 @@ class WebSocketRealtimeAsrClient:
                     break
 
                 event, text, is_final, error = self._parse_dashscope_message(message)
+                text = self._normalize_text(text)
                 if event == "task-started":
                     task_started.set()
                     continue
@@ -286,6 +289,9 @@ class WebSocketRealtimeAsrClient:
     def _is_dashscope_url(url: str) -> bool:
         return "dashscope" in url.lower() or "aliyuncs.com/api-ws" in url.lower()
 
+    def _normalize_text(self, text: str) -> str:
+        return normalize_realtime_text(text, self.config.language)
+
     @staticmethod
     def _parse_dashscope_message(message: str | bytes) -> tuple[str, str, bool, str]:
         if isinstance(message, bytes):
@@ -307,7 +313,7 @@ class WebSocketRealtimeAsrClient:
         sentence = output.get("sentence") or {}
         text = sentence.get("text", "")
         is_final = bool(sentence.get("sentence_end") or sentence.get("end_time") is not None)
-        return event, normalize_realtime_text(text), is_final, ""
+        return event, tidy_text(text), is_final, ""
 
     @staticmethod
     def _parse_message(message: str | bytes) -> tuple[str, bool]:
@@ -317,7 +323,7 @@ class WebSocketRealtimeAsrClient:
         try:
             payload = json.loads(message)
         except json.JSONDecodeError:
-            return normalize_realtime_text(message), True
+            return tidy_text(message), True
 
         text = WebSocketRealtimeAsrClient._extract_text(payload)
         if not text:
@@ -329,7 +335,7 @@ class WebSocketRealtimeAsrClient:
             or payload.get("completed")
             or payload.get("type") in {"final", "completed", "end"}
         )
-        return normalize_realtime_text(text), is_final
+        return tidy_text(text), is_final
 
     @staticmethod
     def _extract_text(payload: dict[str, Any]) -> str:
@@ -348,5 +354,8 @@ class WebSocketRealtimeAsrClient:
         return ""
 
 
-def normalize_realtime_text(text: str) -> str:
-    return to_simplified_chinese(tidy_text(remove_cjk_false_positive_text(text)))
+def normalize_realtime_text(text: str, language: str = "zh") -> str:
+    filtered = filter_text_by_language(text, language)
+    if language == "zh":
+        return to_simplified_chinese(tidy_text(filtered))
+    return tidy_text(filtered)

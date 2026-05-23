@@ -63,6 +63,8 @@ _BASIC_T2S_PHRASES = {
 
 _JAPANESE_KANA_PATTERN = re.compile(r"[\u3040-\u30ff]")
 _KOREAN_HANGUL_PATTERN = re.compile(r"[\uac00-\ud7af]")
+_LATIN_PATTERN = re.compile(r"[A-Za-z]+")
+_CJK_PATTERN = re.compile(r"[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]+")
 
 
 def redact_secret(text: str) -> str:
@@ -89,6 +91,14 @@ def to_simplified_chinese(text: str) -> str:
 
 def remove_cjk_false_positive_text(text: str) -> str:
     return _KOREAN_HANGUL_PATTERN.sub("", _JAPANESE_KANA_PATTERN.sub("", text))
+
+
+def filter_text_by_language(text: str, language: str) -> str:
+    if language == "en":
+        return _CJK_PATTERN.sub("", text)
+    if language == "zh":
+        return _LATIN_PATTERN.sub("", remove_cjk_false_positive_text(text))
+    return remove_cjk_false_positive_text(text)
 
 
 def tidy_text(text: str) -> str:

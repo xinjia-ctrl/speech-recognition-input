@@ -6,6 +6,7 @@ from app.config import Settings, SettingsStore
 from app.asr import AsrEngine, WebSocketRealtimeAsrClient
 from app.history import HistoryStore
 from app.text_tools import (
+    filter_text_by_language,
     redact_secret,
     remove_cjk_false_positive_text,
     tidy_text,
@@ -32,6 +33,10 @@ class CoreTestCase(unittest.TestCase):
 
     def test_remove_cjk_false_positive_text_filters_kana_and_hangul(self) -> None:
         self.assertEqual(remove_cjk_false_positive_text("你好こんにちは안녕世界"), "你好世界")
+
+    def test_filter_text_by_language_keeps_only_selected_language(self) -> None:
+        self.assertEqual(filter_text_by_language("你好abc123，世界", "zh"), "你好123，世界")
+        self.assertEqual(filter_text_by_language("hello你好 world", "en"), "hello world")
 
     def test_settings_round_trip(self) -> None:
         path = self.tmp_dir / "settings.json"
