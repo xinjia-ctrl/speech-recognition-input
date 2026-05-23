@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QTextCursor
+from PySide6.QtGui import QAction, QColor, QPainter, QPen, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -70,21 +70,29 @@ class RealtimeWebSocketWorker(QThread):
         self.client.stop()
 
 
-class FloatingStatusBar(QWidget):
+class FloatingVoiceBall(QWidget):
     toggle_requested = Signal()
     panel_requested = Signal()
     insert_requested = Signal()
     quit_requested = Signal()
+    COLORS = {
+        "idle": "#AAAAAA",
+        "listening": "#FF4136",
+        "processing": "#FF851B",
+        "error": "#FFDC00",
+        "success": "#2ECC40",
+    }
 
     def __init__(self) -> None:
         super().__init__()
         self._drag_start: QPoint | None = None
         self._dragging = False
+        self._state = "idle"
         self._click_timer = QTimer(self)
         self._click_timer.setSingleShot(True)
         self._click_timer.timeout.connect(self.toggle_requested.emit)
         self.setWindowTitle("语音输入器")
-        self.setFixedSize(420, 68)
+        self.setFixedSize(92, 92)
         self.setToolTip("单击开始/停止录音，拖动移动，右键打开菜单")
         self.setWindowFlags(
             Qt.WindowType.Tool
@@ -92,79 +100,29 @@ class FloatingStatusBar(QWidget):
             | Qt.WindowType.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setWindowOpacity(0.92)
-        self.setObjectName("floatingStatusBar")
-        self.setProperty("state", "idle")
+        self.setObjectName("floatingVoiceBall")
         self._build_ui()
         self.set_state("idle", "待机", "点击开始语音输入")
 
     def _build_ui(self) -> None:
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(14, 10, 10, 10)
-        layout.setSpacing(10)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(0)
 
         self.state_label = QLabel("待机")
-        self.state_label.setObjectName("barStateLabel")
-        self.preview_label = QLabel("点击开始语音输入")
-        self.preview_label.setObjectName("barPreviewLabel")
-        self.preview_label.setWordWrap(False)
-        self.insert_button = QPushButton("插入")
-        self.insert_button.setObjectName("barInsertButton")
-        self.insert_button.clicked.connect(self.insert_requested.emit)
-        self.insert_button.setVisible(False)
-        self.panel_button = QPushButton("面板")
-        self.panel_button.setObjectName("barPanelButton")
-        self.panel_button.clicked.connect(self.panel_requested.emit)
+        self.state_label.setObjectName("ballStateLabel")
+        self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         layout.addWidget(self.state_label)
-        layout.addWidget(self.preview_label, 1)
-        layout.addWidget(self.insert_button)
-        layout.addWidget(self.panel_button)
         self._apply_styles()
 
     def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
-            QWidget#floatingStatusBar {
-                background: #1f2937;
-                border: 1px solid rgba(255, 255, 255, 0.35);
-                border-radius: 10px;
-            }
-            QWidget#floatingStatusBar[state="listening"] {
-                background: #2563eb;
-            }
-            QWidget#floatingStatusBar[state="speaking"] {
-                background: #16a34a;
-            }
-            QWidget#floatingStatusBar[state="thinking"] {
-                background: #ca8a04;
-            }
-            QWidget#floatingStatusBar[state="error"] {
-                background: #7e22ce;
-            }
-            QLabel#barStateLabel {
-                color: #ffffff;
-                font-size: 14px;
+            QLabel#ballStateLabel {
+                color: #111827;
+                font-size: 15px;
                 font-weight: 700;
-                min-width: 72px;
-            }
-            QLabel#barPreviewLabel {
-                color: #ffffff;
-                font-size: 14px;
-            }
-            QPushButton#barInsertButton,
-            QPushButton#barPanelButton {
-                min-height: 28px;
-                border-radius: 6px;
-                padding: 4px 10px;
-                color: #172033;
-                background: rgba(255, 255, 255, 0.88);
-                border: 1px solid rgba(255, 255, 255, 0.55);
-                font-weight: 700;
-            }
-            QPushButton#barInsertButton:hover,
-            QPushButton#barPanelButton:hover {
-                background: #ffffff;
             }
             """
         )
@@ -176,19 +134,18 @@ class FloatingStatusBar(QWidget):
         preview: str,
         can_insert: bool = False,
     ) -> None:
-        self.setProperty("state", state)
+        self._state = state
         self.state_label.setText(title)
-        self.preview_label.setText(self._short_preview(preview))
-        self.insert_button.setVisible(can_insert)
-        self.style().unpolish(self)
-        self.style().polish(self)
+        self.update()
 
-    @staticmethod
-    def _short_preview(text: str) -> str:
-        text = " ".join(text.split())
-        if len(text) > 42:
-            return f"{text[:42]}..."
-        return text or "点击开始语音输入"
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QColor(self.COLORS.get(self._state, self.COLORS["idle"])))
+        painter.setPen(QPen(QColor("#111827"), 4))
+        rect = self.rect().adjusted(3, 3, -3, -3)
+        painter.drawEllipse(rect)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -207,9 +164,6 @@ class FloatingStatusBar(QWidget):
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton and not self._dragging:
             self._drag_start = None
-            if self.childAt(event.position().toPoint()) in {self.insert_button, self.panel_button}:
-                super().mouseReleaseEvent(event)
-                return
             self._click_timer.start(180)
             event.accept()
             return
@@ -569,7 +523,7 @@ class FloatingInputWindow(QMainWindow):
         self.tray.show()
 
     def _build_floating_bar(self) -> None:
-        self.floating_bar = FloatingStatusBar()
+        self.floating_bar = FloatingVoiceBall()
         self.floating_bar.toggle_requested.connect(lambda: self.toggle_recording(show_panel=True))
         self.floating_bar.panel_requested.connect(self.show_window)
         self.floating_bar.insert_requested.connect(self.insert_preview_text)
@@ -677,11 +631,7 @@ class FloatingInputWindow(QMainWindow):
             self.realtime_worker.stop()
         self._set_record_button_state(recording=False)
         self._set_connection_state("结束中")
-        self._set_floating_bar_state(
-            "thinking",
-            "AI 推理中",
-            self.text_edit.toPlainText() or "正在整理最后的识别结果",
-        )
+        self._set_floating_bar_state("processing", "处理中", "正在结束实时识别")
         self._set_status("停止录音：正在结束 WebSocket 实时识别")
 
     @Slot(str)
@@ -690,7 +640,7 @@ class FloatingInputWindow(QMainWindow):
         self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
         self.preview_text = text
         self._set_connection_state("识别中")
-        self._set_floating_bar_state("speaking", "正在说话", text)
+        self._set_floating_bar_state("success", "说话中", text)
         self._set_feedback("正在实时输出识别结果")
 
     @Slot(str)
@@ -699,7 +649,7 @@ class FloatingInputWindow(QMainWindow):
         self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
         self.preview_text = text
         self._set_connection_state("完成")
-        self._set_floating_bar_state("speaking", "正在说话", text)
+        self._set_floating_bar_state("success", "说话中", text)
 
     @Slot(str)
     def on_realtime_error(self, message: str) -> None:
@@ -725,7 +675,7 @@ class FloatingInputWindow(QMainWindow):
             if self.settings.auto_insert and not self.settings.preview_before_insert:
                 self.paste_text()
             else:
-                self._set_floating_bar_state("idle", "待确认", text, can_insert=True)
+                self._set_floating_bar_state("success", "待确认", text, can_insert=True)
         else:
             self._set_floating_bar_state("idle", "待机", "没有识别到可用文字")
         self._set_record_button_state(recording=False)
@@ -764,7 +714,7 @@ class FloatingInputWindow(QMainWindow):
         self._set_record_button_state(recording=False)
         self._set_actions_enabled(False)
         self._set_connection_state("识别中")
-        self._set_floating_bar_state("thinking", "AI 推理中", "正在生成文字")
+        self._set_floating_bar_state("processing", "处理中", "正在生成文字")
         self._set_feedback("录音已结束，正在生成文字")
         self._set_status(f"识别中：正在使用{self._provider_label()}转写")
         self.worker = TranscribeWorker(self.asr_engine, audio_path)
@@ -777,7 +727,7 @@ class FloatingInputWindow(QMainWindow):
         self.text_edit.setPlainText(text)
         self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
         self.preview_text = text
-        self._set_floating_bar_state("thinking", "AI 推理中", text)
+        self._set_floating_bar_state("success", "说话中", text)
 
     @Slot(object)
     def on_transcription_finished(self, result: TranscriptionResult) -> None:
@@ -794,7 +744,7 @@ class FloatingInputWindow(QMainWindow):
         self._refresh_history()
         self._set_actions_enabled(True)
         self._set_connection_state("待机")
-        self._set_floating_bar_state("idle", "待确认", result.text, can_insert=bool(result.text))
+        self._set_floating_bar_state("success", "待确认", result.text, can_insert=bool(result.text))
         self._set_feedback("识别完成，可以编辑、复制或插入")
         self._set_status(
             f"完成：{self._provider_label()} {result.model_name}，耗时 {result.elapsed_seconds:.1f}s"
@@ -821,7 +771,7 @@ class FloatingInputWindow(QMainWindow):
         try:
             self.injector.paste(self.text_edit.toPlainText())
             self._set_feedback("已插入到当前输入位置")
-            self._set_floating_bar_state("idle", "已插入", self.text_edit.toPlainText())
+            self._set_floating_bar_state("success", "已插入", self.text_edit.toPlainText())
             self._set_status("已插入到当前输入位置")
         except RuntimeError as exc:
             self._show_error(str(exc))
@@ -836,7 +786,7 @@ class FloatingInputWindow(QMainWindow):
             self.injector.paste(text)
             self._set_feedback("预览文本已插入")
             self._set_status("预览文本已插入到当前输入位置")
-            self._set_floating_bar_state("idle", "已插入", text)
+            self._set_floating_bar_state("success", "已插入", text)
         except RuntimeError as exc:
             self._show_error(str(exc))
 
