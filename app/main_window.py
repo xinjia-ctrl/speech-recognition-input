@@ -168,6 +168,9 @@ class FloatingInputWindow(QMainWindow):
         self.api_model_input.setPlaceholderText("例如 whisper-1 或服务商模型名")
         self.websocket_url_input = QLineEdit(self.settings.websocket_url)
         self.websocket_url_input.setPlaceholderText("wss://example.com/realtime/asr")
+        self.websocket_api_key_input = QLineEdit(self.settings.websocket_api_key)
+        self.websocket_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.websocket_api_key_input.setPlaceholderText("实时识别 API Key，留空则尝试使用 API Key")
         self.websocket_model_input = QLineEdit(self.settings.websocket_model)
         self.websocket_model_input.setPlaceholderText("实时识别模型名，按服务商要求填写")
         self.realtime_chunk_input = QSpinBox()
@@ -190,6 +193,7 @@ class FloatingInputWindow(QMainWindow):
         form.addRow("API Key", self.api_key_input)
         form.addRow("API 模型", self.api_model_input)
         form.addRow("WebSocket 地址", self.websocket_url_input)
+        form.addRow("WebSocket API Key", self.websocket_api_key_input)
         form.addRow("WebSocket 模型", self.websocket_model_input)
         form.addRow("实时音频块(ms)", self.realtime_chunk_input)
         form.addRow("全局快捷键", self.hotkey_input)
@@ -248,7 +252,7 @@ class FloatingInputWindow(QMainWindow):
     def start_websocket_realtime(self) -> None:
         config = RealtimeAsrConfig(
             websocket_url=self.settings.websocket_url,
-            api_key=self.settings.api_key,
+            api_key=self.settings.websocket_api_key or self.settings.api_key,
             model=self.settings.websocket_model,
             language=self.settings.language,
             sample_rate=self.settings.sample_rate,
@@ -382,6 +386,7 @@ class FloatingInputWindow(QMainWindow):
             api_key=self.api_key_input.text().strip(),
             api_model=self.api_model_input.text().strip(),
             websocket_url=self.websocket_url_input.text().strip(),
+            websocket_api_key=self.websocket_api_key_input.text().strip(),
             websocket_model=self.websocket_model_input.text().strip(),
             realtime_chunk_ms=self.realtime_chunk_input.value(),
             hotkey=self.hotkey_input.text().strip() or "ctrl+alt+space",

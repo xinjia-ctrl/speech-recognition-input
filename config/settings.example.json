@@ -7,6 +7,7 @@
   "api_key": "",
   "api_model": "",
   "websocket_url": "",
+  "websocket_api_key": "",
   "websocket_model": "",
   "realtime_chunk_ms": 200,
   "hotkey": "ctrl+alt+space",

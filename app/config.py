@@ -19,6 +19,7 @@ class Settings:
     api_key: str = ""
     api_model: str = ""
     websocket_url: str = ""
+    websocket_api_key: str = ""
     websocket_model: str = ""
     realtime_chunk_ms: int = 200
     hotkey: str = "ctrl+alt+space"

@@ -46,6 +46,7 @@ class CoreTestCase(unittest.TestCase):
                 api_key="test-key",
                 api_model="speech-model",
                 websocket_url="wss://example.com/realtime",
+                websocket_api_key="websocket-test-key",
                 websocket_model="realtime-model",
                 realtime_chunk_ms=100,
             )
@@ -58,6 +59,7 @@ class CoreTestCase(unittest.TestCase):
         self.assertEqual(loaded.api_key, "test-key")
         self.assertEqual(loaded.api_model, "speech-model")
         self.assertEqual(loaded.websocket_url, "wss://example.com/realtime")
+        self.assertEqual(loaded.websocket_api_key, "websocket-test-key")
         self.assertEqual(loaded.websocket_model, "realtime-model")
         self.assertEqual(loaded.realtime_chunk_ms, 100)
 

@@ -61,6 +61,7 @@ python -m app
 - `api_key`：云端 ASR 密钥，真实配置文件 `config/settings.json` 已被 `.gitignore` 忽略。
 - `api_model`：云端 ASR 模型名，可按服务商要求填写。
 - `websocket_url`：WebSocket 实时识别地址，WebSocket 模式必填。
+- `websocket_api_key`：WebSocket 实时识别密钥，适合百炼等与 HTTP API 使用不同密钥的服务；留空时会尝试复用 `api_key`。
 - `websocket_model`：WebSocket 实时识别模型名。
 - `realtime_chunk_ms`：实时音频发送块大小，默认 `200` 毫秒。
 - `language`：识别语言，默认 `zh`。
@@ -105,7 +106,7 @@ tests/
 ## 安全说明
 
 - 不要将 `config/settings.json`、API Key 或包含密钥的截图上传到公开仓库。
-- API Key 输入框会以密码形式显示，接口错误信息会对常见密钥格式做脱敏处理。
+- API Key 和 WebSocket API Key 输入框会以密码形式显示，接口错误信息会对常见密钥格式做脱敏处理。
 
 ## WebSocket 实时识别协议
 
