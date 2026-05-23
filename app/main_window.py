@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QThread, Signal, Slot
+from PySide6.QtCore import QThread, QTimer, Signal, Slot
 from PySide6.QtGui import QAction, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -34,14 +34,26 @@ from app.text_tools import tidy_text
 class TranscribeWorker(QThread):
     partial = Signal(str)
     finished = Signal(object)
+    chunk_finished = Signal(int, object)
 
-    def __init__(self, engine: AsrEngine, audio_path: str) -> None:
+    def __init__(
+        self,
+        engine: AsrEngine,
+        audio_path: str,
+        chunk_index: int | None = None,
+    ) -> None:
         super().__init__()
         self.engine = engine
         self.audio_path = audio_path
+        self.chunk_index = chunk_index
 
     def run(self) -> None:
-        self.finished.emit(self.engine.transcribe(self.audio_path, on_partial=self.partial.emit))
+        if self.chunk_index is None:
+            self.finished.emit(self.engine.transcribe(self.audio_path, on_partial=self.partial.emit))
+            return
+
+        result = self.engine.transcribe(self.audio_path)
+        self.chunk_finished.emit(self.chunk_index, result)
 
 
 class FloatingInputWindow(QMainWindow):
@@ -56,6 +68,14 @@ class FloatingInputWindow(QMainWindow):
         self.history = HistoryStore(limit=self.settings.history_limit)
         self.asr_engine = self._build_engine()
         self.worker: TranscribeWorker | None = None
+        self.stream_timer = QTimer(self)
+        self.stream_timer.setInterval(3000)
+        self.stream_timer.timeout.connect(self.process_streaming_chunk)
+        self.stream_workers: list[TranscribeWorker] = []
+        self.stream_results: dict[int, str] = {}
+        self.next_chunk_index = 0
+        self.next_render_index = 0
+        self.stream_finalizing = False
         self._close_tip_shown = False
         self.hotkey_pressed.connect(self.toggle_recording)
         self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
@@ -191,6 +211,9 @@ class FloatingInputWindow(QMainWindow):
     @Slot()
     def toggle_recording(self) -> None:
         self.show_window()
+        if self.stream_finalizing and self.stream_workers:
+            self._set_status("正在等待剩余分段识别，请稍候")
+            return
         if self.worker is not None and self.worker.isRunning():
             self._set_status("识别中，请稍候")
             return
@@ -207,29 +230,110 @@ class FloatingInputWindow(QMainWindow):
             self._show_error(str(exc))
             return
 
+        self.text_edit.clear()
+        self.stream_workers = []
+        self.stream_results = {}
+        self.next_chunk_index = 0
+        self.next_render_index = 0
+        self.stream_finalizing = False
+        self.stream_timer.start()
         self.record_button.setText("停止录音")
-        self._set_status("录音中：再次点击或按快捷键停止")
+        self._set_status("录音中：每 3 秒分段识别，再次点击或按快捷键停止")
 
     def stop_recording(self) -> None:
-        try:
-            audio_path = self.recorder.stop()
-        except RecordingError as exc:
-            self._show_error(str(exc))
-            self.record_button.setText("开始录音")
+        self.stream_timer.stop()
+        self.stream_finalizing = True
+        if self.recorder.is_recording:
+            self.process_streaming_chunk(final=True)
+        self.record_button.setText("开始录音")
+        self._set_status("停止录音：正在等待剩余分段识别")
+        self.finish_streaming_if_ready()
+
+    def process_streaming_chunk(self, final: bool = False) -> None:
+        if not self.recorder.is_recording:
             return
 
-        self.record_button.setText("开始录音")
-        self._set_status(f"识别中：正在使用{self._provider_label()}转写")
-        self.text_edit.clear()
-        self.worker = TranscribeWorker(self.asr_engine, audio_path)
-        self.worker.partial.connect(self.on_transcription_partial)
-        self.worker.finished.connect(self.on_transcription_finished)
-        self.worker.start()
+        chunk_index = self.next_chunk_index
+        self.next_chunk_index += 1
+        filename = f"chunk_{chunk_index:04d}.wav"
+        try:
+            audio_path = self.recorder.stop(filename=filename)
+        except RecordingError as exc:
+            if final:
+                self._show_error(str(exc))
+            else:
+                self._set_status(f"录音中：跳过空音频块（{exc}）")
+                self._restart_recorder_after_chunk()
+            return
+
+        if not final:
+            self._restart_recorder_after_chunk()
+
+        self._set_status(f"识别中：正在使用{self._provider_label()}处理第 {chunk_index + 1} 段")
+        worker = TranscribeWorker(self.asr_engine, audio_path, chunk_index=chunk_index)
+        worker.chunk_finished.connect(self.on_streaming_chunk_finished)
+        worker.finished.connect(worker.deleteLater)
+        worker.chunk_finished.connect(lambda _index, _result, item=worker: self.cleanup_stream_worker(item))
+        self.stream_workers.append(worker)
+        worker.start()
+
+    def _restart_recorder_after_chunk(self) -> None:
+        try:
+            self.recorder.start()
+        except RecordingError as exc:
+            self.record_button.setText("开始录音")
+            self.stream_timer.stop()
+            self.stream_finalizing = True
+            self._show_error(str(exc))
 
     @Slot(str)
     def on_transcription_partial(self, text: str) -> None:
         self.text_edit.setPlainText(text)
         self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+
+    @Slot(int, object)
+    def on_streaming_chunk_finished(self, chunk_index: int, result: TranscriptionResult) -> None:
+        if result.error:
+            self.stream_results[chunk_index] = ""
+            self._set_status(f"第 {chunk_index + 1} 段识别失败：{result.error}")
+        else:
+            self.stream_results[chunk_index] = result.text
+
+        self.render_streaming_results()
+        self.finish_streaming_if_ready()
+
+    def cleanup_stream_worker(self, worker: TranscribeWorker) -> None:
+        if worker in self.stream_workers:
+            self.stream_workers.remove(worker)
+        worker.deleteLater()
+        self.finish_streaming_if_ready()
+
+    def render_streaming_results(self) -> None:
+        updated = False
+        while self.next_render_index in self.stream_results:
+            self.next_render_index += 1
+            updated = True
+
+        if not updated:
+            return
+
+        ordered_text = "".join(
+            self.stream_results[index] for index in range(self.next_render_index)
+        )
+        self.text_edit.setPlainText(tidy_text(ordered_text))
+        self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+
+    def finish_streaming_if_ready(self) -> None:
+        if not self.stream_finalizing or self.stream_workers:
+            return
+
+        text = self.text_edit.toPlainText().strip()
+        if text:
+            self.history.add(text)
+            self._refresh_history()
+            if self.settings.auto_insert:
+                self.paste_text()
+        self._set_status(f"完成：{self._provider_label()}分段实时识别已结束")
 
     @Slot(object)
     def on_transcription_finished(self, result: TranscriptionResult) -> None:
