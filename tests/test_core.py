@@ -76,6 +76,13 @@ class CoreTestCase(unittest.TestCase):
         self.assertEqual(loaded.websocket_model, "realtime-model")
         self.assertEqual(loaded.realtime_chunk_ms, 100)
 
+    def test_local_beam_size_defaults_to_low_latency(self) -> None:
+        settings = Settings()
+        engine = AsrEngine(beam_size=settings.local_beam_size)
+
+        self.assertEqual(settings.local_beam_size, 1)
+        self.assertEqual(engine.beam_size, 1)
+
     def test_api_payload_text_extraction_supports_common_shapes(self) -> None:
         self.assertEqual(AsrEngine._extract_text_from_api_payload({"text": "你好"}), "你好")
         self.assertEqual(

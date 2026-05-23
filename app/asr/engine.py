@@ -26,6 +26,7 @@ class AsrEngine:
         language: str = "zh",
         compute_type: str = "int8",
         initial_prompt: str = "请使用简体中文输出，保留自然的中文标点。",
+        beam_size: int = 1,
         api_base_url: str = "",
         api_key: str = "",
         api_model: str = "",
@@ -37,6 +38,7 @@ class AsrEngine:
         self.language = language
         self.compute_type = compute_type
         self.initial_prompt = initial_prompt
+        self.beam_size = beam_size
         self.api_base_url = api_base_url
         self.api_key = api_key
         self.api_model = api_model
@@ -98,7 +100,7 @@ class AsrEngine:
             str(path),
             language=self.language,
             task="transcribe",
-            beam_size=5,
+            beam_size=self.beam_size,
             vad_filter=True,
             initial_prompt=self.initial_prompt,
         )

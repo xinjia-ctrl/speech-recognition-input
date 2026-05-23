@@ -215,6 +215,7 @@ class FloatingInputWindow(QMainWindow):
             model_size=self.settings.model_size,
             model_path=self.settings.model_path,
             language=self.settings.language,
+            beam_size=self.settings.local_beam_size,
             api_base_url=self.settings.api_base_url,
             api_key=self.settings.api_key,
             api_model=self.settings.api_model,
@@ -314,6 +315,10 @@ class FloatingInputWindow(QMainWindow):
         self.api_key_input.setPlaceholderText("云端 API Key，settings.json 已被忽略")
         self.api_model_input = QLineEdit(self.settings.api_model)
         self.api_model_input.setPlaceholderText("例如 whisper-1 或服务商模型名")
+        self.local_beam_size_input = QSpinBox()
+        self.local_beam_size_input.setRange(1, 5)
+        self.local_beam_size_input.setValue(self.settings.local_beam_size)
+        self.local_beam_size_input.setToolTip("数值越小越快，输入法场景建议保持 1")
         self.websocket_url_input = QLineEdit(self.settings.websocket_url)
         self.websocket_url_input.setPlaceholderText("wss://example.com/realtime/asr")
         self.websocket_api_key_input = QLineEdit(self.settings.websocket_api_key)
@@ -340,6 +345,7 @@ class FloatingInputWindow(QMainWindow):
         form.addRow("API 地址", self.api_base_url_input)
         form.addRow("API Key", self.api_key_input)
         form.addRow("API 模型", self.api_model_input)
+        form.addRow("本地搜索宽度", self.local_beam_size_input)
         form.addRow("WebSocket 地址", self.websocket_url_input)
         form.addRow("WebSocket API Key", self.websocket_api_key_input)
         form.addRow("WebSocket 模型", self.websocket_model_input)
@@ -737,6 +743,7 @@ class FloatingInputWindow(QMainWindow):
         self._set_status("设置已保存")
 
     def apply_settings_from_form(self, save: bool, restart_hotkey: bool) -> None:
+        previous_settings = self.settings
         self.settings = Settings(
             asr_provider=self.provider_combo.currentText(),
             model_size=self.model_combo.currentText(),
@@ -745,6 +752,7 @@ class FloatingInputWindow(QMainWindow):
             api_base_url=self.api_base_url_input.text().strip(),
             api_key=self.api_key_input.text().strip(),
             api_model=self.api_model_input.text().strip(),
+            local_beam_size=self.local_beam_size_input.value(),
             websocket_url=self.websocket_url_input.text().strip(),
             websocket_api_key=self.websocket_api_key_input.text().strip(),
             websocket_model=self.websocket_model_input.text().strip(),
@@ -757,12 +765,29 @@ class FloatingInputWindow(QMainWindow):
         self._update_context_badges()
         if save:
             self.settings_store.save(self.settings)
-        self.asr_engine = self._build_engine()
+        if self._engine_settings_changed(previous_settings, self.settings):
+            self.asr_engine = self._build_engine()
         self.history.limit = self.settings.history_limit
         if restart_hotkey:
             self.hotkey.stop()
             self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
             self.hotkey.start()
+
+    @staticmethod
+    def _engine_settings_changed(old: Settings, new: Settings) -> bool:
+        return any(
+            getattr(old, field) != getattr(new, field)
+            for field in (
+                "asr_provider",
+                "model_size",
+                "model_path",
+                "language",
+                "api_base_url",
+                "api_key",
+                "api_model",
+                "local_beam_size",
+            )
+        )
 
     def _refresh_history(self) -> None:
         self.history_list.clear()
