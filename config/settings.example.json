@@ -1,0 +1,9 @@
+{
+  "model_size": "base",
+  "model_path": "",
+  "language": "zh",
+  "hotkey": "ctrl+alt+space",
+  "auto_insert": false,
+  "history_limit": 20,
+  "sample_rate": 16000
+}
