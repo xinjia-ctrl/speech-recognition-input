@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import QPoint, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import QAction, QColor, QPainter, QPen, QTextCursor
 from PySide6.QtWidgets import (
@@ -34,7 +36,7 @@ from app.audio import Recorder, RecordingError
 from app.config import Settings, SettingsStore
 from app.history import HistoryStore
 from app.input import GlobalHotkey, InputInjector
-from app.text_tools import tidy_text
+from app.text_tools import redact_secret, tidy_text
 
 
 class TranscribeWorker(QThread):
@@ -204,6 +206,11 @@ class FloatingInputWindow(QMainWindow):
         self.realtime_worker: RealtimeWebSocketWorker | None = None
         self.realtime_failed = False
         self.preview_text = ""
+        self._diagnostic_started_at: float | None = None
+        self._diagnostic_first_text_at: float | None = None
+        self._diagnostic_stop_at: float | None = None
+        self._diagnostic_finished_at: float | None = None
+        self._diagnostic_last_error = ""
         self._close_tip_shown = False
         self.hotkey_pressed.connect(self.toggle_recording)
         self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
@@ -375,15 +382,40 @@ class FloatingInputWindow(QMainWindow):
         form.addRow("历史记录条数", self.history_limit_input)
         form.addRow(self.save_settings_button)
 
+        diagnostics_page = QWidget()
+        diagnostics_form = QFormLayout(diagnostics_page)
+        self.diagnostic_labels: dict[str, QLabel] = {}
+        for key, label in (
+            ("provider", "当前模式"),
+            ("language", "识别语言"),
+            ("api_key", "HTTP API Key"),
+            ("websocket_key", "WebSocket Key"),
+            ("websocket_url", "WebSocket 地址"),
+            ("state", "当前状态"),
+            ("first_text_latency", "首字延迟"),
+            ("tail_latency", "停止后收尾"),
+            ("total_elapsed", "总耗时"),
+            ("last_error", "最近错误"),
+        ):
+            value_label = QLabel("-")
+            value_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            self.diagnostic_labels[key] = value_label
+            diagnostics_form.addRow(label, value_label)
+        refresh_diagnostics_button = QPushButton("刷新诊断信息")
+        refresh_diagnostics_button.clicked.connect(self._refresh_diagnostics)
+        diagnostics_form.addRow(refresh_diagnostics_button)
+
         tabs = QTabWidget()
         tabs.setObjectName("mainTabs")
         tabs.addTab(input_page, "输入")
         tabs.addTab(history_page, "历史")
         tabs.addTab(settings_page, "设置")
+        tabs.addTab(diagnostics_page, "诊断")
         layout.addWidget(tabs)
         self.setCentralWidget(root)
         self._apply_styles()
         self._update_context_badges()
+        self._refresh_diagnostics()
 
     def _apply_styles(self) -> None:
         self.setStyleSheet(
@@ -533,6 +565,7 @@ class FloatingInputWindow(QMainWindow):
 
     def _set_status(self, text: str) -> None:
         self.status_label.setText(text)
+        self._refresh_diagnostics()
 
     def _set_feedback(self, text: str, is_error: bool = False) -> None:
         self.feedback_label.setText(text)
@@ -567,6 +600,7 @@ class FloatingInputWindow(QMainWindow):
 
     def _set_connection_state(self, text: str) -> None:
         self.connection_badge.setText(text)
+        self._refresh_diagnostics()
 
     def _set_floating_bar_state(
         self,
@@ -577,6 +611,73 @@ class FloatingInputWindow(QMainWindow):
     ) -> None:
         if hasattr(self, "floating_bar"):
             self.floating_bar.set_state(state, title, preview, can_insert)
+
+    @staticmethod
+    def _format_diagnostic_duration(seconds: float | None) -> str:
+        if seconds is None:
+            return "-"
+        return f"{seconds * 1000:.0f} ms"
+
+    @staticmethod
+    def _configured(value: str) -> str:
+        return "已配置" if value.strip() else "未配置"
+
+    def _mark_diagnostic_start(self) -> None:
+        now = time.perf_counter()
+        self._diagnostic_started_at = now
+        self._diagnostic_first_text_at = None
+        self._diagnostic_stop_at = None
+        self._diagnostic_finished_at = None
+        self._diagnostic_last_error = ""
+        self._refresh_diagnostics()
+
+    def _mark_diagnostic_first_text(self) -> None:
+        if self._diagnostic_started_at is not None and self._diagnostic_first_text_at is None:
+            self._diagnostic_first_text_at = time.perf_counter()
+            self._refresh_diagnostics()
+
+    def _mark_diagnostic_stop(self) -> None:
+        if self._diagnostic_started_at is not None and self._diagnostic_stop_at is None:
+            self._diagnostic_stop_at = time.perf_counter()
+            self._refresh_diagnostics()
+
+    def _mark_diagnostic_finish(self) -> None:
+        if self._diagnostic_started_at is not None:
+            self._diagnostic_finished_at = time.perf_counter()
+            self._refresh_diagnostics()
+
+    def _set_diagnostic_error(self, message: str) -> None:
+        self._diagnostic_last_error = redact_secret(message)
+        self._refresh_diagnostics()
+
+    def _refresh_diagnostics(self) -> None:
+        if not hasattr(self, "diagnostic_labels"):
+            return
+
+        first_text_latency = None
+        tail_latency = None
+        total_elapsed = None
+        if self._diagnostic_started_at is not None and self._diagnostic_first_text_at is not None:
+            first_text_latency = self._diagnostic_first_text_at - self._diagnostic_started_at
+        if self._diagnostic_stop_at is not None and self._diagnostic_finished_at is not None:
+            tail_latency = self._diagnostic_finished_at - self._diagnostic_stop_at
+        if self._diagnostic_started_at is not None and self._diagnostic_finished_at is not None:
+            total_elapsed = self._diagnostic_finished_at - self._diagnostic_started_at
+
+        values = {
+            "provider": self._provider_label(),
+            "language": self._language_label(),
+            "api_key": self._configured(self.settings.api_key),
+            "websocket_key": self._configured(self.settings.websocket_api_key or self.settings.api_key),
+            "websocket_url": self._configured(self.settings.websocket_url),
+            "state": self.connection_badge.text() if hasattr(self, "connection_badge") else "-",
+            "first_text_latency": self._format_diagnostic_duration(first_text_latency),
+            "tail_latency": self._format_diagnostic_duration(tail_latency),
+            "total_elapsed": self._format_diagnostic_duration(total_elapsed),
+            "last_error": self._diagnostic_last_error or "无",
+        }
+        for key, value in values.items():
+            self.diagnostic_labels[key].setText(value)
 
     @Slot()
     def toggle_recording(self, show_panel: bool = True) -> None:
@@ -613,6 +714,7 @@ class FloatingInputWindow(QMainWindow):
         self.text_edit.clear()
         self.preview_text = ""
         self.realtime_failed = False
+        self._mark_diagnostic_start()
         self.realtime_worker = RealtimeWebSocketWorker(config)
         self.realtime_worker.partial.connect(self.on_realtime_partial)
         self.realtime_worker.final.connect(self.on_realtime_final)
@@ -629,6 +731,7 @@ class FloatingInputWindow(QMainWindow):
     def stop_websocket_realtime(self) -> None:
         if self.realtime_worker is not None:
             self.realtime_worker.stop()
+        self._mark_diagnostic_stop()
         self._set_record_button_state(recording=False)
         self._set_connection_state("结束中")
         self._set_floating_bar_state("processing", "处理中", "正在结束实时识别")
@@ -639,6 +742,7 @@ class FloatingInputWindow(QMainWindow):
         self.text_edit.setPlainText(text)
         self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
         self.preview_text = text
+        self._mark_diagnostic_first_text()
         self._set_connection_state("识别中")
         self._set_floating_bar_state("success", "说话中", text)
         self._set_feedback("正在实时输出识别结果")
@@ -648,12 +752,15 @@ class FloatingInputWindow(QMainWindow):
         self.text_edit.setPlainText(text)
         self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
         self.preview_text = text
+        self._mark_diagnostic_first_text()
         self._set_connection_state("完成")
         self._set_floating_bar_state("success", "说话中", text)
 
     @Slot(str)
     def on_realtime_error(self, message: str) -> None:
         self.realtime_failed = True
+        self._set_diagnostic_error(message)
+        self._mark_diagnostic_finish()
         self._show_error(message)
         self._set_record_button_state(recording=False)
         self._set_actions_enabled(True)
@@ -682,6 +789,7 @@ class FloatingInputWindow(QMainWindow):
         self._set_actions_enabled(True)
         self._set_connection_state("待机")
         self.realtime_worker = None
+        self._mark_diagnostic_finish()
         self._set_feedback("实时识别已完成，可以确认插入")
         self._set_status("完成：WebSocket 实时识别已结束")
 
@@ -694,6 +802,7 @@ class FloatingInputWindow(QMainWindow):
 
         self.text_edit.clear()
         self.preview_text = ""
+        self._mark_diagnostic_start()
         self._set_record_button_state(recording=True)
         self._set_actions_enabled(False)
         self._set_connection_state("录音中")
@@ -705,12 +814,15 @@ class FloatingInputWindow(QMainWindow):
         try:
             audio_path = self.recorder.stop()
         except RecordingError as exc:
+            self._set_diagnostic_error(str(exc))
+            self._mark_diagnostic_finish()
             self._show_error(str(exc))
             self._set_record_button_state(recording=False)
             self._set_actions_enabled(True)
             self._set_connection_state("错误")
             return
 
+        self._mark_diagnostic_stop()
         self._set_record_button_state(recording=False)
         self._set_actions_enabled(False)
         self._set_connection_state("识别中")
@@ -727,11 +839,14 @@ class FloatingInputWindow(QMainWindow):
         self.text_edit.setPlainText(text)
         self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
         self.preview_text = text
+        self._mark_diagnostic_first_text()
         self._set_floating_bar_state("success", "说话中", text)
 
     @Slot(object)
     def on_transcription_finished(self, result: TranscriptionResult) -> None:
         if result.error:
+            self._set_diagnostic_error(result.error)
+            self._mark_diagnostic_finish()
             self._show_error(result.error)
             self._set_actions_enabled(True)
             self._set_connection_state("错误")
@@ -740,6 +855,8 @@ class FloatingInputWindow(QMainWindow):
 
         self.text_edit.setPlainText(result.text)
         self.preview_text = result.text
+        if result.text:
+            self._mark_diagnostic_first_text()
         self.history.add(result.text)
         self._refresh_history()
         self._set_actions_enabled(True)
@@ -749,6 +866,7 @@ class FloatingInputWindow(QMainWindow):
         self._set_status(
             f"完成：{self._provider_label()} {result.model_name}，耗时 {result.elapsed_seconds:.1f}s"
         )
+        self._mark_diagnostic_finish()
         if self.settings.auto_insert and result.text and not self.settings.preview_before_insert:
             self.paste_text()
 
@@ -825,6 +943,7 @@ class FloatingInputWindow(QMainWindow):
         if self._engine_settings_changed(previous_settings, self.settings):
             self.asr_engine = self._build_engine()
         self.history.limit = self.settings.history_limit
+        self._refresh_diagnostics()
         if restart_hotkey:
             self.hotkey.stop()
             self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
@@ -852,6 +971,7 @@ class FloatingInputWindow(QMainWindow):
             self.history_list.addItem(item.text)
 
     def _show_error(self, message: str) -> None:
+        self._set_diagnostic_error(message)
         self._set_feedback(message, is_error=True)
         self._set_floating_bar_state("error", "错误", message)
         QMessageBox.warning(self, "提示", message)
