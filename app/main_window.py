@@ -36,6 +36,7 @@ from app.audio import Recorder, RecordingError
 from app.config import Settings, SettingsStore
 from app.history import HistoryStore
 from app.input import GlobalHotkey, InputInjector
+from app.text_postprocess import postprocess_text
 from app.text_tools import redact_secret, tidy_text
 
 
@@ -358,6 +359,13 @@ class FloatingInputWindow(QMainWindow):
         self.auto_insert_check.setChecked(self.settings.auto_insert)
         self.preview_before_insert_check = QCheckBox()
         self.preview_before_insert_check.setChecked(self.settings.preview_before_insert)
+        self.postprocess_check = QCheckBox()
+        self.postprocess_check.setChecked(self.settings.postprocess_enabled)
+        self.postprocess_mode_combo = QComboBox()
+        self.postprocess_mode_combo.addItems(["chat", "document", "code"])
+        if self.settings.postprocess_mode not in {"chat", "document", "code"}:
+            self.postprocess_mode_combo.addItem(self.settings.postprocess_mode)
+        self.postprocess_mode_combo.setCurrentText(self.settings.postprocess_mode)
         self.history_limit_input = QSpinBox()
         self.history_limit_input.setRange(1, 100)
         self.history_limit_input.setValue(self.settings.history_limit)
@@ -379,6 +387,8 @@ class FloatingInputWindow(QMainWindow):
         form.addRow("全局快捷键", self.hotkey_input)
         form.addRow("识别后自动插入", self.auto_insert_check)
         form.addRow("插入前预览确认", self.preview_before_insert_check)
+        form.addRow("规则后处理", self.postprocess_check)
+        form.addRow("文本场景模式", self.postprocess_mode_combo)
         form.addRow("历史记录条数", self.history_limit_input)
         form.addRow(self.save_settings_button)
 
@@ -612,6 +622,13 @@ class FloatingInputWindow(QMainWindow):
         if hasattr(self, "floating_bar"):
             self.floating_bar.set_state(state, title, preview, can_insert)
 
+    def _postprocess_text(self, text: str) -> str:
+        return postprocess_text(
+            text,
+            mode=self.settings.postprocess_mode,
+            enabled=self.settings.postprocess_enabled,
+        )
+
     @staticmethod
     def _format_diagnostic_duration(seconds: float | None) -> str:
         if seconds is None:
@@ -774,7 +791,10 @@ class FloatingInputWindow(QMainWindow):
             self.realtime_worker = None
             return
 
-        text = self.text_edit.toPlainText().strip()
+        text = self._postprocess_text(self.text_edit.toPlainText().strip())
+        if text:
+            self.text_edit.setPlainText(text)
+            self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
         if text:
             self.history.add(text)
             self._refresh_history()
@@ -853,21 +873,22 @@ class FloatingInputWindow(QMainWindow):
             self._set_status("错误：识别失败")
             return
 
-        self.text_edit.setPlainText(result.text)
-        self.preview_text = result.text
-        if result.text:
+        processed_text = self._postprocess_text(result.text)
+        self.text_edit.setPlainText(processed_text)
+        self.preview_text = processed_text
+        if processed_text:
             self._mark_diagnostic_first_text()
-        self.history.add(result.text)
+        self.history.add(processed_text)
         self._refresh_history()
         self._set_actions_enabled(True)
         self._set_connection_state("待机")
-        self._set_floating_bar_state("success", "待确认", result.text, can_insert=bool(result.text))
+        self._set_floating_bar_state("success", "待确认", processed_text, can_insert=bool(processed_text))
         self._set_feedback("识别完成，可以编辑、复制或插入")
         self._set_status(
             f"完成：{self._provider_label()} {result.model_name}，耗时 {result.elapsed_seconds:.1f}s"
         )
         self._mark_diagnostic_finish()
-        if self.settings.auto_insert and result.text and not self.settings.preview_before_insert:
+        if self.settings.auto_insert and processed_text and not self.settings.preview_before_insert:
             self.paste_text()
 
     @Slot()
@@ -934,6 +955,8 @@ class FloatingInputWindow(QMainWindow):
             hotkey=self.hotkey_input.text().strip() or "ctrl+alt+space",
             auto_insert=self.auto_insert_check.isChecked(),
             preview_before_insert=self.preview_before_insert_check.isChecked(),
+            postprocess_enabled=self.postprocess_check.isChecked(),
+            postprocess_mode=self.postprocess_mode_combo.currentText(),
             history_limit=self.history_limit_input.value(),
             sample_rate=self.settings.sample_rate,
         )

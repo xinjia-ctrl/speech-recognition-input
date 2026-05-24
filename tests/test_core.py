@@ -5,6 +5,7 @@ from pathlib import Path
 from app.config import Settings, SettingsStore
 from app.asr import AsrEngine, RealtimeAsrConfig, WebSocketRealtimeAsrClient
 from app.history import HistoryStore
+from app.text_postprocess import postprocess_text
 from app.text_tools import (
     filter_text_by_language,
     redact_secret,
@@ -64,6 +65,8 @@ class CoreTestCase(unittest.TestCase):
                 realtime_chunk_ms=100,
                 websocket_final_wait_ms=1200,
                 preview_before_insert=False,
+                postprocess_enabled=False,
+                postprocess_mode="code",
             )
         )
 
@@ -79,6 +82,14 @@ class CoreTestCase(unittest.TestCase):
         self.assertEqual(loaded.realtime_chunk_ms, 100)
         self.assertEqual(loaded.websocket_final_wait_ms, 1200)
         self.assertFalse(loaded.preview_before_insert)
+        self.assertFalse(loaded.postprocess_enabled)
+        self.assertEqual(loaded.postprocess_mode, "code")
+
+    def test_postprocess_text_removes_fillers_and_adds_question_mark(self) -> None:
+        self.assertEqual(postprocess_text("呃 这个 能不能 帮我 看一下", "chat"), "能不能 帮我 看一下？")
+
+    def test_postprocess_text_supports_code_mode_replacements(self) -> None:
+        self.assertEqual(postprocess_text("i f 语句", "code"), "if :。")
 
     def test_realtime_config_defaults_to_short_final_wait(self) -> None:
         settings = Settings()

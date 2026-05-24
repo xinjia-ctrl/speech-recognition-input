@@ -27,6 +27,8 @@ class Settings:
     hotkey: str = "ctrl+alt+space"
     auto_insert: bool = False
     preview_before_insert: bool = True
+    postprocess_enabled: bool = True
+    postprocess_mode: str = "chat"
     history_limit: int = 20
     sample_rate: int = 16000
 
