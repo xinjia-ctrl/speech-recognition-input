@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QSystemTrayIcon,
     QTabWidget,
@@ -469,8 +470,17 @@ class FloatingInputWindow(QMainWindow):
         )
         history_layout.addWidget(self.history_list)
 
+        settings_scroll = QScrollArea()
+        settings_scroll.setWidgetResizable(True)
+        settings_scroll.setFrameShape(QFrame.Shape.NoFrame)
         settings_page = QWidget()
+        settings_page.setObjectName("settingsPage")
+        settings_scroll.setWidget(settings_page)
         form = QFormLayout(settings_page)
+        form.setContentsMargins(18, 18, 18, 18)
+        form.setHorizontalSpacing(16)
+        form.setVerticalSpacing(12)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self.provider_combo = QComboBox()
         self.provider_combo.addItems(["local", "api", "websocket"])
         self.provider_combo.setCurrentText(self.settings.asr_provider)
@@ -590,7 +600,7 @@ class FloatingInputWindow(QMainWindow):
         tabs.setObjectName("mainTabs")
         tabs.addTab(input_page, "输入")
         tabs.addTab(history_page, "历史")
-        tabs.addTab(settings_page, "设置")
+        tabs.addTab(settings_scroll, "设置")
         tabs.addTab(diagnostics_page, "诊断")
         layout.addWidget(tabs)
         self.setCentralWidget(root)
@@ -624,6 +634,31 @@ class FloatingInputWindow(QMainWindow):
             QTabBar::tab:selected {
                 color: #172033;
                 background: #ffffff;
+            }
+            QScrollArea {
+                border: none;
+                background: #ffffff;
+            }
+            QScrollArea > QWidget > QWidget#settingsPage {
+                background: #ffffff;
+            }
+            QScrollBar:vertical {
+                width: 10px;
+                background: #f3f6fa;
+                margin: 4px 2px 4px 2px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                min-height: 32px;
+                background: #c7d0df;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #aeb9ca;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0;
             }
             QFrame#header {
                 border: 1px solid #d9dee7;
