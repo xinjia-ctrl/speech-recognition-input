@@ -4,7 +4,17 @@ from pathlib import Path
 
 from app.config_check import build_config_checks, model_match_hint, TRANSLATION_MODEL_RULES
 from app.config import Settings, SettingsStore
-from app.asr import AsrEngine, AsrStreamEvent, RealtimeAsrConfig, UnifiedAsrEngine, WebSocketRealtimeAsrClient
+from app.asr import (
+    AsrEngine,
+    AsrStreamEvent,
+    HttpAsrProvider,
+    LocalWhisperProvider,
+    RealtimeAsrConfig,
+    UnifiedAsrEngine,
+    WebSocketRealtimeAsrClient,
+    WebSocketRealtimeProvider,
+    build_asr_provider,
+)
 from app.history import HistoryStore
 from app.text_postprocess import postprocess_text
 from app.text_translate import (
@@ -193,6 +203,17 @@ class CoreTestCase(unittest.TestCase):
         self.assertEqual(config.language, "en")
         self.assertEqual(config.chunk_ms, 100)
         self.assertEqual(config.final_wait_seconds, 1.2)
+
+    def test_asr_provider_factory_selects_provider_by_mode(self) -> None:
+        self.assertIsInstance(build_asr_provider(Settings(asr_provider="local")), LocalWhisperProvider)
+        self.assertIsInstance(build_asr_provider(Settings(asr_provider="api")), HttpAsrProvider)
+        self.assertIsInstance(build_asr_provider(Settings(asr_provider="websocket")), WebSocketRealtimeProvider)
+
+    def test_unified_asr_engine_delegates_to_selected_provider(self) -> None:
+        engine = UnifiedAsrEngine(Settings(asr_provider="websocket", websocket_model="realtime-model"))
+
+        self.assertIsInstance(engine.provider, WebSocketRealtimeProvider)
+        self.assertEqual(engine.model_name, "realtime-model")
 
     def test_asr_stream_event_carries_partial_text(self) -> None:
         event = AsrStreamEvent("partial", text="你好")
