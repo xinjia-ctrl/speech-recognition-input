@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMainWindow,
     QMenu,
-    QMessageBox,
     QPushButton,
     QSystemTrayIcon,
     QTabWidget,
@@ -26,6 +25,7 @@ from app.asr import (
     AsrStreamEvent,
     TranscriptionResult,
     UnifiedAsrEngine,
+    is_no_speech_message,
 )
 from app.audio import Recorder, RecordingError
 from app.config_check import build_config_checks
@@ -793,6 +793,14 @@ class FloatingInputWindow(QMainWindow):
 
     @Slot(str)
     def on_realtime_error(self, message: str) -> None:
+        if is_no_speech_message(message):
+            self._show_notice("未识别到声音，请靠近麦克风后再试")
+            self._set_record_button_state(recording=False)
+            self._set_actions_enabled(True)
+            self._set_connection_state("待机")
+            self._set_status("待机：本次没有识别到声音")
+            return
+
         self.realtime_failed = True
         self._set_diagnostic_error(message)
         self._mark_diagnostic_finish()
@@ -812,7 +820,8 @@ class FloatingInputWindow(QMainWindow):
         text = self._postprocess_text(self._current_result_text().strip())
         if text:
             self._set_result_text(text)
-        if text:
+        has_text = bool(text)
+        if has_text:
             self.history.add(text)
             self._refresh_history()
             self.preview_text = text
@@ -821,14 +830,17 @@ class FloatingInputWindow(QMainWindow):
             else:
                 self._set_floating_bar_state("success", "待确认", text, can_insert=True)
         else:
-            self._set_floating_bar_state("idle", "待机", "没有识别到可用文字")
+            self._show_notice("未识别到声音，请靠近麦克风后再试")
         self._set_record_button_state(recording=False)
         self._set_actions_enabled(True)
         self._set_connection_state("待机")
         self.realtime_worker = None
         self._mark_diagnostic_finish()
-        self._set_feedback("实时识别已完成，可以确认插入")
-        self._set_status("完成：WebSocket 实时识别已结束")
+        if has_text:
+            self._set_feedback("实时识别已完成，可以确认插入")
+            self._set_status("完成：WebSocket 实时识别已结束")
+        else:
+            self._set_status("待机：本次没有识别到声音")
 
     def start_recording(self) -> None:
         try:
@@ -852,9 +864,18 @@ class FloatingInputWindow(QMainWindow):
         try:
             audio_path = self.recorder.stop()
         except RecordingError as exc:
-            self._set_diagnostic_error(str(exc))
+            message = str(exc)
+            if is_no_speech_message(message):
+                self._show_notice("未识别到声音，请靠近麦克风后再试")
+                self._mark_diagnostic_finish()
+                self._set_record_button_state(recording=False)
+                self._set_actions_enabled(True)
+                self._set_connection_state("待机")
+                self._set_status("待机：本次没有识别到声音")
+                return
+            self._set_diagnostic_error(message)
             self._mark_diagnostic_finish()
-            self._show_error(str(exc))
+            self._show_error(message)
             self._set_record_button_state(recording=False)
             self._set_actions_enabled(True)
             self._set_connection_state("错误")
@@ -888,6 +909,13 @@ class FloatingInputWindow(QMainWindow):
     @Slot(object)
     def on_transcription_finished(self, result: TranscriptionResult) -> None:
         if result.error:
+            if is_no_speech_message(result.error):
+                self._show_notice("未识别到声音，请靠近麦克风后再试")
+                self._set_actions_enabled(True)
+                self._set_connection_state("待机")
+                self._set_status("待机：本次没有识别到声音")
+                self._mark_diagnostic_finish()
+                return
             self._set_diagnostic_error(result.error)
             self._mark_diagnostic_finish()
             self._show_error(result.error)
@@ -901,6 +929,15 @@ class FloatingInputWindow(QMainWindow):
         self.preview_text = processed_text
         if processed_text:
             self._mark_diagnostic_first_text()
+        else:
+            self._show_notice("未识别到声音，请靠近麦克风后再试")
+            self._set_actions_enabled(True)
+            self._set_connection_state("待机")
+            self._set_status(
+                f"完成：{self._provider_label()} {result.model_name}，没有识别到声音"
+            )
+            self._mark_diagnostic_finish()
+            return
         self.history.add(processed_text)
         self._refresh_history()
         self._set_actions_enabled(True)
@@ -1061,7 +1098,10 @@ class FloatingInputWindow(QMainWindow):
         self._set_diagnostic_error(message)
         self._set_feedback(message, is_error=True)
         self._set_floating_bar_state("error", "错误", message)
-        QMessageBox.warning(self, "提示", message)
+
+    def _show_notice(self, message: str) -> None:
+        self._set_feedback(message)
+        self._set_floating_bar_state("idle", "待机", message)
 
     @Slot(object)
     def on_tray_activated(self, reason) -> None:

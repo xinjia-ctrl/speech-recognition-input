@@ -14,6 +14,7 @@ from app.asr import (
     WebSocketRealtimeAsrClient,
     WebSocketRealtimeProvider,
     build_asr_provider,
+    is_no_speech_message,
 )
 from app.history import HistoryStore
 from app.text_postprocess import postprocess_text
@@ -261,6 +262,16 @@ class CoreTestCase(unittest.TestCase):
 
         self.assertEqual(event.kind, "partial")
         self.assertEqual(event.text, "你好")
+
+    def test_no_speech_message_detection(self) -> None:
+        self.assertTrue(is_no_speech_message("没有采集到有效音频，请检查麦克风权限"))
+        self.assertTrue(is_no_speech_message("No speech detected in audio"))
+        self.assertFalse(is_no_speech_message("WebSocket API Key 无效"))
+
+    def test_main_window_errors_are_non_blocking(self) -> None:
+        source = Path("app/main_window.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("QMessageBox.warning", source)
 
     def test_api_payload_text_extraction_supports_common_shapes(self) -> None:
         self.assertEqual(AsrEngine._extract_text_from_api_payload({"text": "你好"}), "你好")

@@ -1,4 +1,5 @@
 from app.asr.engine import AsrEngine, TranscriptionResult
+from app.asr.errors import is_no_speech_message
 from app.asr.providers import (
     AsrProvider,
     AsrStreamEvent,
@@ -15,6 +16,7 @@ __all__ = [
     "AsrStreamEvent",
     "AsrEngine",
     "HttpAsrProvider",
+    "is_no_speech_message",
     "LocalWhisperProvider",
     "RealtimeAsrConfig",
     "TranscriptionResult",
