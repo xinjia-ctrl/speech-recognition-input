@@ -6,7 +6,12 @@ from app.config import Settings, SettingsStore
 from app.asr import AsrEngine, RealtimeAsrConfig, WebSocketRealtimeAsrClient
 from app.history import HistoryStore
 from app.text_postprocess import postprocess_text
-from app.text_translate import translate_text, translation_button_label
+from app.text_translate import (
+    _extract_translation_text,
+    _normalize_translation_result,
+    translate_text,
+    translation_button_label,
+)
 from app.text_tools import (
     filter_text_by_language,
     redact_secret,
@@ -68,6 +73,9 @@ class CoreTestCase(unittest.TestCase):
                 preview_before_insert=False,
                 postprocess_enabled=False,
                 postprocess_mode="code",
+                translation_api_base_url="https://example.com/v1/chat/completions",
+                translation_api_key="translate-key",
+                translation_model="qwen-test",
             )
         )
 
@@ -85,6 +93,9 @@ class CoreTestCase(unittest.TestCase):
         self.assertFalse(loaded.preview_before_insert)
         self.assertFalse(loaded.postprocess_enabled)
         self.assertEqual(loaded.postprocess_mode, "code")
+        self.assertEqual(loaded.translation_api_base_url, "https://example.com/v1/chat/completions")
+        self.assertEqual(loaded.translation_api_key, "translate-key")
+        self.assertEqual(loaded.translation_model, "qwen-test")
 
     def test_postprocess_text_removes_fillers_and_adds_question_mark(self) -> None:
         self.assertEqual(postprocess_text("呃 这个 能不能 帮我 看一下", "chat"), "能不能 帮我 看一下？")
@@ -97,6 +108,18 @@ class CoreTestCase(unittest.TestCase):
         self.assertEqual(translation_button_label("en"), "英翻中")
         self.assertEqual(translate_text("你好", "zh"), "hello")
         self.assertEqual(translate_text("hello", "en"), "你好")
+
+    def test_translation_payload_text_extraction_supports_common_shapes(self) -> None:
+        self.assertEqual(_extract_translation_text({"text": "hello"}), "hello")
+        self.assertEqual(
+            _extract_translation_text({"choices": [{"message": {"content": "hello"}}]}),
+            "hello",
+        )
+        self.assertEqual(_extract_translation_text({"data": {"output": {"text": "hello"}}}), "hello")
+
+    def test_translation_result_keeps_english_punctuation(self) -> None:
+        self.assertEqual(_normalize_translation_result("Hello, world.", "zh"), "Hello, world.")
+        self.assertEqual(_normalize_translation_result("語音輸入。", "en"), "语音输入。")
 
     def test_realtime_config_defaults_to_short_final_wait(self) -> None:
         settings = Settings()

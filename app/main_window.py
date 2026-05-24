@@ -38,7 +38,7 @@ from app.history import HistoryStore
 from app.input import GlobalHotkey, InputInjector
 from app.text_postprocess import postprocess_text
 from app.text_tools import redact_secret, tidy_text
-from app.text_translate import translate_text, translation_button_label
+from app.text_translate import translate_text_with_api, translation_button_label
 
 
 class TranscribeWorker(QThread):
@@ -52,6 +52,40 @@ class TranscribeWorker(QThread):
 
     def run(self) -> None:
         self.finished.emit(self.engine.transcribe(self.audio_path, on_partial=self.partial.emit))
+
+
+class TranslationWorker(QThread):
+    finished = Signal(str)
+    error = Signal(str)
+
+    def __init__(
+        self,
+        text: str,
+        source_language: str,
+        api_base_url: str,
+        api_key: str,
+        model: str,
+    ) -> None:
+        super().__init__()
+        self.text = text
+        self.source_language = source_language
+        self.api_base_url = api_base_url
+        self.api_key = api_key
+        self.model = model
+
+    def run(self) -> None:
+        try:
+            translated = translate_text_with_api(
+                self.text,
+                self.source_language,
+                self.api_base_url,
+                self.api_key,
+                self.model,
+            )
+        except RuntimeError as exc:
+            self.error.emit(str(exc))
+            return
+        self.finished.emit(translated)
 
 
 class RealtimeWebSocketWorker(QThread):
@@ -325,6 +359,7 @@ class FloatingInputWindow(QMainWindow):
         self.history = HistoryStore(limit=self.settings.history_limit)
         self.asr_engine = self._build_engine()
         self.worker: TranscribeWorker | None = None
+        self.translation_worker: TranslationWorker | None = None
         self.realtime_worker: RealtimeWebSocketWorker | None = None
         self.realtime_failed = False
         self.preview_text = ""
@@ -456,6 +491,15 @@ class FloatingInputWindow(QMainWindow):
         self.api_key_input.setPlaceholderText("云端 API Key，settings.json 已被忽略")
         self.api_model_input = QLineEdit(self.settings.api_model)
         self.api_model_input.setPlaceholderText("例如 whisper-1 或服务商模型名")
+        self.translation_api_base_url_input = QLineEdit(self.settings.translation_api_base_url)
+        self.translation_api_base_url_input.setPlaceholderText(
+            "https://api.siliconflow.cn/v1/chat/completions"
+        )
+        self.translation_api_key_input = QLineEdit(self.settings.translation_api_key)
+        self.translation_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.translation_api_key_input.setPlaceholderText("翻译 API Key，settings.json 已被忽略")
+        self.translation_model_input = QLineEdit(self.settings.translation_model)
+        self.translation_model_input.setPlaceholderText("例如 Qwen/Qwen2.5-7B-Instruct")
         self.local_beam_size_input = QSpinBox()
         self.local_beam_size_input.setRange(1, 5)
         self.local_beam_size_input.setValue(self.settings.local_beam_size)
@@ -500,6 +544,9 @@ class FloatingInputWindow(QMainWindow):
         form.addRow("API 地址", self.api_base_url_input)
         form.addRow("API Key", self.api_key_input)
         form.addRow("API 模型", self.api_model_input)
+        form.addRow("翻译 API 地址", self.translation_api_base_url_input)
+        form.addRow("翻译 API Key", self.translation_api_key_input)
+        form.addRow("翻译模型", self.translation_model_input)
         form.addRow("本地搜索宽度", self.local_beam_size_input)
         form.addRow("WebSocket 地址", self.websocket_url_input)
         form.addRow("WebSocket API Key", self.websocket_api_key_input)
@@ -521,6 +568,8 @@ class FloatingInputWindow(QMainWindow):
             ("provider", "当前模式"),
             ("language", "识别语言"),
             ("api_key", "HTTP API Key"),
+            ("translation_key", "翻译 API Key"),
+            ("translation_url", "翻译 API 地址"),
             ("websocket_key", "WebSocket Key"),
             ("websocket_url", "WebSocket 地址"),
             ("state", "当前状态"),
@@ -856,6 +905,8 @@ class FloatingInputWindow(QMainWindow):
             "provider": self._provider_label(),
             "language": self._language_label(),
             "api_key": self._configured(self.settings.api_key),
+            "translation_key": self._configured(self.settings.translation_api_key),
+            "translation_url": self._configured(self.settings.translation_api_base_url),
             "websocket_key": self._configured(self.settings.websocket_api_key or self.settings.api_key),
             "websocket_url": self._configured(self.settings.websocket_url),
             "state": self.connection_badge.text() if hasattr(self, "connection_badge") else "-",
@@ -1086,11 +1137,40 @@ class FloatingInputWindow(QMainWindow):
         if not text:
             self._set_feedback("没有可翻译的文本")
             return
-        translated = translate_text(text, self.settings.language)
+        if self.translation_worker is not None and self.translation_worker.isRunning():
+            self._set_feedback("正在翻译，请稍候")
+            return
+
+        self.apply_settings_from_form(save=False, restart_hotkey=False)
+        self.translation_worker = TranslationWorker(
+            text,
+            self.settings.language,
+            self.settings.translation_api_base_url,
+            self.settings.translation_api_key,
+            self.settings.translation_model,
+        )
+        self.translation_worker.finished.connect(self.on_translation_finished)
+        self.translation_worker.error.connect(self.on_translation_error)
+        self.translation_worker.start()
+        self._set_feedback(f"正在{translation_button_label(self.settings.language)}")
+        self._set_status("翻译中：正在调用云端翻译模型")
+        self._set_floating_bar_state("processing", "翻译中", text)
+
+    @Slot(str)
+    def on_translation_finished(self, translated: str) -> None:
         self._set_result_text(translated)
         self.preview_text = translated
         self._set_feedback(f"已完成{translation_button_label(self.settings.language)}")
+        self._set_status("完成：翻译结果已生成")
         self._set_floating_bar_state("success", "已翻译", translated, can_insert=True)
+        self.translation_worker = None
+
+    @Slot(str)
+    def on_translation_error(self, message: str) -> None:
+        self.translation_worker = None
+        self._show_error(f"翻译失败：{message}")
+        self._set_status("错误：翻译失败")
+        self._set_floating_bar_state("error", "翻译失败", message)
 
     @Slot()
     def copy_text(self) -> None:
@@ -1143,6 +1223,9 @@ class FloatingInputWindow(QMainWindow):
             api_base_url=self.api_base_url_input.text().strip(),
             api_key=self.api_key_input.text().strip(),
             api_model=self.api_model_input.text().strip(),
+            translation_api_base_url=self.translation_api_base_url_input.text().strip(),
+            translation_api_key=self.translation_api_key_input.text().strip(),
+            translation_model=self.translation_model_input.text().strip(),
             local_beam_size=self.local_beam_size_input.value(),
             websocket_url=self.websocket_url_input.text().strip(),
             websocket_api_key=self.websocket_api_key_input.text().strip(),

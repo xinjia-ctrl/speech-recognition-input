@@ -29,6 +29,9 @@ class Settings:
     preview_before_insert: bool = True
     postprocess_enabled: bool = True
     postprocess_mode: str = "chat"
+    translation_api_base_url: str = ""
+    translation_api_key: str = ""
+    translation_model: str = ""
     history_limit: int = 20
     sample_rate: int = 16000
 
