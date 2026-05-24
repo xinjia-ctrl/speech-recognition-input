@@ -23,10 +23,9 @@ from PySide6.QtWidgets import (
 )
 
 from app.asr import (
-    AsrEngine,
-    RealtimeAsrConfig,
+    AsrStreamEvent,
     TranscriptionResult,
-    WebSocketRealtimeAsrClient,
+    UnifiedAsrEngine,
 )
 from app.audio import Recorder, RecordingError
 from app.config_check import build_config_checks
@@ -40,16 +39,16 @@ from app.ui import CompactInputPanel, ConfigCheckPanel, FloatingVoiceBall, Setti
 
 
 class TranscribeWorker(QThread):
-    partial = Signal(str)
+    event = Signal(object)
     finished = Signal(object)
 
-    def __init__(self, engine: AsrEngine, audio_path: str) -> None:
+    def __init__(self, engine: UnifiedAsrEngine, audio_path: str) -> None:
         super().__init__()
         self.engine = engine
         self.audio_path = audio_path
 
     def run(self) -> None:
-        self.finished.emit(self.engine.transcribe(self.audio_path, on_partial=self.partial.emit))
+        self.finished.emit(self.engine.transcribe_file(self.audio_path, self.event.emit))
 
 
 class TranslationWorker(QThread):
@@ -87,25 +86,17 @@ class TranslationWorker(QThread):
 
 
 class RealtimeWebSocketWorker(QThread):
-    partial = Signal(str)
-    final = Signal(str)
-    error = Signal(str)
-    level = Signal(float)
+    event = Signal(object)
 
-    def __init__(self, config: RealtimeAsrConfig) -> None:
+    def __init__(self, engine: UnifiedAsrEngine) -> None:
         super().__init__()
-        self.client = WebSocketRealtimeAsrClient(config)
+        self.engine = engine
 
     def run(self) -> None:
-        self.client.run(
-            on_partial=self.partial.emit,
-            on_final=self.final.emit,
-            on_error=self.error.emit,
-            on_level=self.level.emit,
-        )
+        self.engine.run_realtime(self.event.emit)
 
     def stop(self) -> None:
-        self.client.stop()
+        self.engine.stop_realtime()
 
 
 class FloatingInputWindow(QMainWindow):
@@ -149,17 +140,8 @@ class FloatingInputWindow(QMainWindow):
         else:
             self._set_status(f"待机：按 {self.settings.hotkey} 开始/停止录音")
 
-    def _build_engine(self) -> AsrEngine:
-        return AsrEngine(
-            provider=self.settings.asr_provider,
-            model_size=self.settings.model_size,
-            model_path=self.settings.model_path,
-            language=self.settings.language,
-            beam_size=self.settings.local_beam_size,
-            api_base_url=self.settings.api_base_url,
-            api_key=self.settings.api_key,
-            api_model=self.settings.api_model,
-        )
+    def _build_engine(self) -> UnifiedAsrEngine:
+        return UnifiedAsrEngine(self.settings)
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -747,24 +729,12 @@ class FloatingInputWindow(QMainWindow):
         self.start_recording()
 
     def start_websocket_realtime(self) -> None:
-        config = RealtimeAsrConfig(
-            websocket_url=self.settings.websocket_url,
-            api_key=self.settings.websocket_api_key or self.settings.api_key,
-            model=self.settings.websocket_model,
-            language=self.settings.language,
-            sample_rate=self.settings.sample_rate,
-            chunk_ms=self.settings.realtime_chunk_ms,
-            final_wait_seconds=self.settings.websocket_final_wait_ms / 1000,
-        )
         self._clear_result_text()
         self.preview_text = ""
         self.realtime_failed = False
         self._mark_diagnostic_start()
-        self.realtime_worker = RealtimeWebSocketWorker(config)
-        self.realtime_worker.partial.connect(self.on_realtime_partial)
-        self.realtime_worker.final.connect(self.on_realtime_final)
-        self.realtime_worker.error.connect(self.on_realtime_error)
-        self.realtime_worker.level.connect(self.on_audio_level)
+        self.realtime_worker = RealtimeWebSocketWorker(self.asr_engine)
+        self.realtime_worker.event.connect(self.on_realtime_stream_event)
         self.realtime_worker.finished.connect(self.on_realtime_finished)
         self.realtime_worker.start()
         self._set_record_button_state(recording=True)
@@ -879,9 +849,14 @@ class FloatingInputWindow(QMainWindow):
         self._set_feedback("录音已结束，正在生成文字")
         self._set_status(f"识别中：正在使用{self._provider_label()}转写")
         self.worker = TranscribeWorker(self.asr_engine, audio_path)
-        self.worker.partial.connect(self.on_transcription_partial)
+        self.worker.event.connect(self.on_file_asr_stream_event)
         self.worker.finished.connect(self.on_transcription_finished)
         self.worker.start()
+
+    @Slot(object)
+    def on_file_asr_stream_event(self, event: AsrStreamEvent) -> None:
+        if event.kind == "partial":
+            self.on_transcription_partial(event.text)
 
     @Slot(str)
     def on_transcription_partial(self, text: str) -> None:
@@ -918,6 +893,17 @@ class FloatingInputWindow(QMainWindow):
         self._mark_diagnostic_finish()
         if self.settings.auto_insert and processed_text and not self.settings.preview_before_insert:
             self.paste_text()
+
+    @Slot(object)
+    def on_realtime_stream_event(self, event: AsrStreamEvent) -> None:
+        if event.kind == "partial":
+            self.on_realtime_partial(event.text)
+        elif event.kind == "final":
+            self.on_realtime_final(event.text)
+        elif event.kind == "error":
+            self.on_realtime_error(event.error)
+        elif event.kind == "level":
+            self.on_audio_level(event.level)
 
     @Slot()
     def tidy_current_text(self) -> None:
@@ -1037,6 +1023,11 @@ class FloatingInputWindow(QMainWindow):
                 "api_key",
                 "api_model",
                 "local_beam_size",
+                "websocket_url",
+                "websocket_api_key",
+                "websocket_model",
+                "realtime_chunk_ms",
+                "websocket_final_wait_ms",
             )
         )
 

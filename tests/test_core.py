@@ -4,7 +4,7 @@ from pathlib import Path
 
 from app.config_check import build_config_checks, model_match_hint, TRANSLATION_MODEL_RULES
 from app.config import Settings, SettingsStore
-from app.asr import AsrEngine, RealtimeAsrConfig, WebSocketRealtimeAsrClient
+from app.asr import AsrEngine, AsrStreamEvent, RealtimeAsrConfig, UnifiedAsrEngine, WebSocketRealtimeAsrClient
 from app.history import HistoryStore
 from app.text_postprocess import postprocess_text
 from app.text_translate import (
@@ -175,6 +175,30 @@ class CoreTestCase(unittest.TestCase):
 
         self.assertEqual(settings.local_beam_size, 1)
         self.assertEqual(engine.beam_size, 1)
+
+    def test_unified_asr_engine_builds_realtime_config_from_settings(self) -> None:
+        settings = Settings(
+            api_key="fallback-key",
+            websocket_url="wss://example.com/realtime",
+            websocket_model="realtime-model",
+            language="en",
+            realtime_chunk_ms=100,
+            websocket_final_wait_ms=1200,
+        )
+        config = UnifiedAsrEngine._build_realtime_config(settings)
+
+        self.assertEqual(config.api_key, "fallback-key")
+        self.assertEqual(config.websocket_url, "wss://example.com/realtime")
+        self.assertEqual(config.model, "realtime-model")
+        self.assertEqual(config.language, "en")
+        self.assertEqual(config.chunk_ms, 100)
+        self.assertEqual(config.final_wait_seconds, 1.2)
+
+    def test_asr_stream_event_carries_partial_text(self) -> None:
+        event = AsrStreamEvent("partial", text="你好")
+
+        self.assertEqual(event.kind, "partial")
+        self.assertEqual(event.text, "你好")
 
     def test_api_payload_text_extraction_supports_common_shapes(self) -> None:
         self.assertEqual(AsrEngine._extract_text_from_api_payload({"text": "你好"}), "你好")
