@@ -80,6 +80,7 @@ class FloatingVoiceBall(QWidget):
     panel_requested = Signal()
     insert_requested = Signal()
     quit_requested = Signal()
+    moved = Signal()
     COLORS = {
         "idle": "#AAAAAA",
         "listening": "#FF4136",
@@ -183,6 +184,7 @@ class FloatingVoiceBall(QWidget):
         if event.buttons() & Qt.MouseButton.LeftButton and self._drag_start is not None:
             self._dragging = True
             self.move(event.globalPosition().toPoint() - self._drag_start)
+            self.moved.emit()
             event.accept()
             return
         super().mouseMoveEvent(event)
@@ -685,6 +687,7 @@ class FloatingInputWindow(QMainWindow):
         self.floating_bar.panel_requested.connect(self.show_compact_panel)
         self.floating_bar.insert_requested.connect(self.insert_preview_text)
         self.floating_bar.quit_requested.connect(self.quit_app)
+        self.floating_bar.moved.connect(self._position_compact_panel)
         self.floating_bar.move(80, 160)
         self.floating_bar.show()
 
@@ -694,6 +697,14 @@ class FloatingInputWindow(QMainWindow):
         self.compact_panel.insert_requested.connect(self.insert_preview_text)
         self.compact_panel.copy_requested.connect(self.copy_text)
         self.compact_panel.settings_requested.connect(self.show_window)
+
+    def _position_compact_panel(self) -> None:
+        if not hasattr(self, "compact_panel") or not hasattr(self, "floating_bar"):
+            return
+        if not self.compact_panel.isVisible():
+            return
+        ball_rect = self.floating_bar.geometry()
+        self.compact_panel.move(ball_rect.right(), ball_rect.top())
 
     def _set_status(self, text: str) -> None:
         self.status_label.setText(text)
@@ -759,6 +770,8 @@ class FloatingInputWindow(QMainWindow):
     ) -> None:
         if hasattr(self, "floating_bar"):
             self.floating_bar.set_state(state, title, preview, can_insert)
+        if hasattr(self, "compact_panel") and state == "idle":
+            self.compact_panel.hide()
 
     @Slot(float)
     def on_audio_level(self, level: float) -> None:
@@ -847,10 +860,8 @@ class FloatingInputWindow(QMainWindow):
     def show_compact_panel(self) -> None:
         if not hasattr(self, "compact_panel"):
             return
-        if hasattr(self, "floating_bar"):
-            pos = self.floating_bar.geometry().topRight() + QPoint(10, 0)
-            self.compact_panel.move(pos)
         self.compact_panel.show()
+        self._position_compact_panel()
         self.compact_panel.raise_()
         self.compact_panel.activateWindow()
 
@@ -1069,7 +1080,7 @@ class FloatingInputWindow(QMainWindow):
         try:
             self.injector.paste(text)
             self._set_feedback("已插入到当前输入位置")
-            self._set_floating_bar_state("success", "已插入", text)
+            self._set_floating_bar_state("idle", "待机", "已插入")
             self._set_status("已插入到当前输入位置")
         except RuntimeError as exc:
             self._show_error(str(exc))
@@ -1084,7 +1095,7 @@ class FloatingInputWindow(QMainWindow):
             self.injector.paste(text)
             self._set_feedback("预览文本已插入")
             self._set_status("预览文本已插入到当前输入位置")
-            self._set_floating_bar_state("success", "已插入", text)
+            self._set_floating_bar_state("idle", "待机", "已插入")
         except RuntimeError as exc:
             self._show_error(str(exc))
 
