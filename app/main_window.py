@@ -215,6 +215,94 @@ class FloatingVoiceBall(QWidget):
             self.quit_requested.emit()
 
 
+class CompactInputPanel(QWidget):
+    toggle_requested = Signal()
+    insert_requested = Signal()
+    copy_requested = Signal()
+    settings_requested = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setWindowTitle("语音输入")
+        self.setFixedSize(360, 170)
+        self.setWindowFlags(
+            Qt.WindowType.Tool
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        self.preview_edit = QTextEdit()
+        self.preview_edit.setObjectName("compactPreview")
+        self.preview_edit.setPlaceholderText("识别结果会显示在这里，可编辑后插入。")
+        self.preview_edit.setFixedHeight(92)
+
+        button_layout = QHBoxLayout()
+        self.toggle_button = QPushButton("开始")
+        self.toggle_button.clicked.connect(self.toggle_requested.emit)
+        self.insert_button = QPushButton("插入")
+        self.insert_button.clicked.connect(self.insert_requested.emit)
+        self.copy_button = QPushButton("复制")
+        self.copy_button.clicked.connect(self.copy_requested.emit)
+        self.settings_button = QPushButton("设置")
+        self.settings_button.clicked.connect(self.settings_requested.emit)
+
+        button_layout.addWidget(self.toggle_button)
+        button_layout.addWidget(self.insert_button)
+        button_layout.addWidget(self.copy_button)
+        button_layout.addWidget(self.settings_button)
+
+        layout.addWidget(self.preview_edit)
+        layout.addLayout(button_layout)
+        self._apply_styles()
+
+    def _apply_styles(self) -> None:
+        self.setStyleSheet(
+            """
+            QWidget {
+                background: #ffffff;
+                border: 1px solid #cfd7e3;
+                border-radius: 8px;
+            }
+            QTextEdit#compactPreview {
+                border: 1px solid #d4dbe6;
+                border-radius: 6px;
+                padding: 8px;
+                font-size: 14px;
+                color: #172033;
+                background: #f8fafc;
+            }
+            QPushButton {
+                min-height: 28px;
+                border-radius: 6px;
+                padding: 5px 9px;
+                color: #172033;
+                background: #edf2f7;
+                border: 1px solid #cbd5e1;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background: #e2e8f0;
+            }
+            """
+        )
+
+    def set_text(self, text: str) -> None:
+        if self.preview_edit.toPlainText() == text:
+            return
+        self.preview_edit.setPlainText(text)
+        self.preview_edit.moveCursor(QTextCursor.MoveOperation.End)
+
+    def text(self) -> str:
+        return self.preview_edit.toPlainText()
+
+    def set_recording(self, recording: bool) -> None:
+        self.toggle_button.setText("停止" if recording else "开始")
+
+
 class FloatingInputWindow(QMainWindow):
     hotkey_pressed = Signal()
 
@@ -236,7 +324,7 @@ class FloatingInputWindow(QMainWindow):
         self._diagnostic_finished_at: float | None = None
         self._diagnostic_last_error = ""
         self._close_tip_shown = False
-        self.hotkey_pressed.connect(self.toggle_recording)
+        self.hotkey_pressed.connect(self.toggle_compact_recording)
         self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
 
         self.setWindowTitle("语音输入器")
@@ -244,6 +332,7 @@ class FloatingInputWindow(QMainWindow):
         self._build_ui()
         self._build_tray()
         self._build_floating_bar()
+        self._build_compact_panel()
         self._refresh_history()
 
         if not self.hotkey.start():
@@ -331,7 +420,7 @@ class FloatingInputWindow(QMainWindow):
         history_layout = QVBoxLayout(history_page)
         self.history_list = QListWidget()
         self.history_list.itemDoubleClicked.connect(
-            lambda item: self.text_edit.setPlainText(item.text())
+            lambda item: self._set_result_text(item.text())
         )
         history_layout.addWidget(self.history_list)
 
@@ -574,13 +663,16 @@ class FloatingInputWindow(QMainWindow):
         self.tray.activated.connect(self.on_tray_activated)
         menu = QMenu(self)
 
-        show_action = QAction("显示窗口", self)
-        show_action.triggered.connect(self.show_window)
+        show_action = QAction("显示输入框", self)
+        show_action.triggered.connect(self.show_compact_panel)
+        settings_action = QAction("设置", self)
+        settings_action.triggered.connect(self.show_window)
         record_action = QAction("开始/停止录音", self)
-        record_action.triggered.connect(lambda: self.toggle_recording(show_panel=True))
+        record_action.triggered.connect(self.toggle_compact_recording)
         quit_action = QAction("退出", self)
         quit_action.triggered.connect(self.quit_app)
         menu.addAction(show_action)
+        menu.addAction(settings_action)
         menu.addAction(record_action)
         menu.addAction(quit_action)
 
@@ -589,12 +681,19 @@ class FloatingInputWindow(QMainWindow):
 
     def _build_floating_bar(self) -> None:
         self.floating_bar = FloatingVoiceBall()
-        self.floating_bar.toggle_requested.connect(lambda: self.toggle_recording(show_panel=True))
-        self.floating_bar.panel_requested.connect(self.show_window)
+        self.floating_bar.toggle_requested.connect(self.toggle_compact_recording)
+        self.floating_bar.panel_requested.connect(self.show_compact_panel)
         self.floating_bar.insert_requested.connect(self.insert_preview_text)
         self.floating_bar.quit_requested.connect(self.quit_app)
         self.floating_bar.move(80, 160)
         self.floating_bar.show()
+
+    def _build_compact_panel(self) -> None:
+        self.compact_panel = CompactInputPanel()
+        self.compact_panel.toggle_requested.connect(self.toggle_compact_recording)
+        self.compact_panel.insert_requested.connect(self.insert_preview_text)
+        self.compact_panel.copy_requested.connect(self.copy_text)
+        self.compact_panel.settings_requested.connect(self.show_window)
 
     def _set_status(self, text: str) -> None:
         self.status_label.setText(text)
@@ -619,6 +718,22 @@ class FloatingInputWindow(QMainWindow):
             self.record_button.setObjectName("primaryButton")
         self.record_button.style().unpolish(self.record_button)
         self.record_button.style().polish(self.record_button)
+        if hasattr(self, "compact_panel"):
+            self.compact_panel.set_recording(recording)
+
+    def _set_result_text(self, text: str) -> None:
+        self.text_edit.setPlainText(text)
+        self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+        if hasattr(self, "compact_panel"):
+            self.compact_panel.set_text(text)
+
+    def _clear_result_text(self) -> None:
+        self._set_result_text("")
+
+    def _current_result_text(self) -> str:
+        if hasattr(self, "compact_panel") and self.compact_panel.isVisible():
+            return self.compact_panel.text()
+        return self.text_edit.toPlainText()
 
     def _set_actions_enabled(self, enabled: bool) -> None:
         self.tidy_button.setEnabled(enabled)
@@ -725,6 +840,21 @@ class FloatingInputWindow(QMainWindow):
             self.diagnostic_labels[key].setText(value)
 
     @Slot()
+    def toggle_compact_recording(self) -> None:
+        self.show_compact_panel()
+        self.toggle_recording(show_panel=False)
+
+    def show_compact_panel(self) -> None:
+        if not hasattr(self, "compact_panel"):
+            return
+        if hasattr(self, "floating_bar"):
+            pos = self.floating_bar.geometry().topRight() + QPoint(10, 0)
+            self.compact_panel.move(pos)
+        self.compact_panel.show()
+        self.compact_panel.raise_()
+        self.compact_panel.activateWindow()
+
+    @Slot()
     def toggle_recording(self, show_panel: bool = True) -> None:
         if show_panel:
             self.show_window()
@@ -756,7 +886,7 @@ class FloatingInputWindow(QMainWindow):
             chunk_ms=self.settings.realtime_chunk_ms,
             final_wait_seconds=self.settings.websocket_final_wait_ms / 1000,
         )
-        self.text_edit.clear()
+        self._clear_result_text()
         self.preview_text = ""
         self.realtime_failed = False
         self._mark_diagnostic_start()
@@ -786,8 +916,7 @@ class FloatingInputWindow(QMainWindow):
 
     @Slot(str)
     def on_realtime_partial(self, text: str) -> None:
-        self.text_edit.setPlainText(text)
-        self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+        self._set_result_text(text)
         self.preview_text = text
         self._mark_diagnostic_first_text()
         self._set_connection_state("识别中")
@@ -796,8 +925,7 @@ class FloatingInputWindow(QMainWindow):
 
     @Slot(str)
     def on_realtime_final(self, text: str) -> None:
-        self.text_edit.setPlainText(text)
-        self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+        self._set_result_text(text)
         self.preview_text = text
         self._mark_diagnostic_first_text()
         self._set_connection_state("完成")
@@ -821,10 +949,9 @@ class FloatingInputWindow(QMainWindow):
             self.realtime_worker = None
             return
 
-        text = self._postprocess_text(self.text_edit.toPlainText().strip())
+        text = self._postprocess_text(self._current_result_text().strip())
         if text:
-            self.text_edit.setPlainText(text)
-            self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+            self._set_result_text(text)
         if text:
             self.history.add(text)
             self._refresh_history()
@@ -850,7 +977,7 @@ class FloatingInputWindow(QMainWindow):
             self._show_error(str(exc))
             return
 
-        self.text_edit.clear()
+        self._clear_result_text()
         self.preview_text = ""
         self._mark_diagnostic_start()
         self._set_record_button_state(recording=True)
@@ -888,8 +1015,7 @@ class FloatingInputWindow(QMainWindow):
 
     @Slot(str)
     def on_transcription_partial(self, text: str) -> None:
-        self.text_edit.setPlainText(text)
-        self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+        self._set_result_text(text)
         self.preview_text = text
         self._mark_diagnostic_first_text()
         self._set_floating_bar_state("success", "说话中", text)
@@ -906,7 +1032,7 @@ class FloatingInputWindow(QMainWindow):
             return
 
         processed_text = self._postprocess_text(result.text)
-        self.text_edit.setPlainText(processed_text)
+        self._set_result_text(processed_text)
         self.preview_text = processed_text
         if processed_text:
             self._mark_diagnostic_first_text()
@@ -925,13 +1051,13 @@ class FloatingInputWindow(QMainWindow):
 
     @Slot()
     def tidy_current_text(self) -> None:
-        self.text_edit.setPlainText(tidy_text(self.text_edit.toPlainText()))
+        self._set_result_text(tidy_text(self._current_result_text()))
         self._set_feedback("文本已整理")
 
     @Slot()
     def copy_text(self) -> None:
         try:
-            self.injector.copy(self.text_edit.toPlainText())
+            self.injector.copy(self._current_result_text())
             self._set_feedback("已复制到剪贴板")
             self._set_status("已复制到剪贴板")
         except RuntimeError as exc:
@@ -939,17 +1065,18 @@ class FloatingInputWindow(QMainWindow):
 
     @Slot()
     def paste_text(self) -> None:
+        text = self._current_result_text()
         try:
-            self.injector.paste(self.text_edit.toPlainText())
+            self.injector.paste(text)
             self._set_feedback("已插入到当前输入位置")
-            self._set_floating_bar_state("success", "已插入", self.text_edit.toPlainText())
+            self._set_floating_bar_state("success", "已插入", text)
             self._set_status("已插入到当前输入位置")
         except RuntimeError as exc:
             self._show_error(str(exc))
 
     @Slot()
     def insert_preview_text(self) -> None:
-        text = self.text_edit.toPlainText().strip() or self.preview_text.strip()
+        text = self._current_result_text().strip() or self.preview_text.strip()
         if not text:
             self._set_floating_bar_state("idle", "待机", "没有可插入的预览文本")
             return
@@ -1047,6 +1174,8 @@ class FloatingInputWindow(QMainWindow):
             self.show()
         self.raise_()
         self.activateWindow()
+        if hasattr(self, "compact_panel"):
+            self.compact_panel.hide()
 
     def _provider_label(self) -> str:
         if self.settings.asr_provider == "api":
@@ -1078,5 +1207,7 @@ class FloatingInputWindow(QMainWindow):
             self.realtime_worker.stop()
         self.hotkey.stop()
         self.floating_bar.hide()
+        if hasattr(self, "compact_panel"):
+            self.compact_panel.hide()
         self.tray.hide()
         QApplication.quit()
