@@ -70,6 +70,7 @@ def build_config_checks(
         _check_websocket(settings),
         _check_translation(settings),
         _check_postprocess(settings),
+        _check_ai_polish(settings),
     ]
 
 
@@ -163,8 +164,29 @@ def _check_translation(settings: Settings) -> ConfigCheckItem:
 
 def _check_postprocess(settings: Settings) -> ConfigCheckItem:
     if settings.postprocess_enabled:
-        return ConfigCheckItem("postprocess", "规则后处理", "ok", "已启用", settings.postprocess_mode)
+        dictionary_state = "词典校正开启" if settings.dictionary_correction_enabled else "词典校正关闭"
+        return ConfigCheckItem(
+            "postprocess",
+            "文本处理 Pipeline",
+            "ok",
+            "已启用",
+            f"{settings.postprocess_mode}，{dictionary_state}",
+        )
     return ConfigCheckItem("postprocess", "规则后处理", "warning", "未启用", "识别结果不会自动消除口语和整理标点")
+
+
+def _check_ai_polish(settings: Settings) -> ConfigCheckItem:
+    if not settings.ai_polish_enabled:
+        return ConfigCheckItem("ai_polish", "AI 润色", "warning", "未启用", "当前只使用本地词典和规则处理")
+
+    missing = _missing_fields(
+        ("地址", settings.ai_polish_api_base_url),
+        ("API Key", settings.ai_polish_api_key),
+        ("模型", settings.ai_polish_model),
+    )
+    if missing:
+        return ConfigCheckItem("ai_polish", "AI 润色", "error", "缺少必填项", f"缺少：{', '.join(missing)}")
+    return ConfigCheckItem("ai_polish", "AI 润色", "ok", "配置完整", settings.ai_polish_model)
 
 
 def _missing_fields(*fields: tuple[str, str]) -> list[str]:

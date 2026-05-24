@@ -152,12 +152,30 @@ class SettingsPanel(QScrollArea):
         self.preview_before_insert_check.setChecked(settings.preview_before_insert)
         self.postprocess_check = QCheckBox()
         self.postprocess_check.setChecked(settings.postprocess_enabled)
+        self.dictionary_correction_check = QCheckBox()
+        self.dictionary_correction_check.setChecked(settings.dictionary_correction_enabled)
 
         self.postprocess_mode_combo = QComboBox()
         self.postprocess_mode_combo.addItems(["chat", "document", "code"])
         if settings.postprocess_mode not in {"chat", "document", "code"}:
             self.postprocess_mode_combo.addItem(settings.postprocess_mode)
         self.postprocess_mode_combo.setCurrentText(settings.postprocess_mode)
+
+        self.ai_polish_check = QCheckBox()
+        self.ai_polish_check.setChecked(settings.ai_polish_enabled)
+        self.ai_polish_api_base_url_input = self._build_editable_combo(
+            settings.ai_polish_api_base_url,
+            TRANSLATION_API_URL_PRESETS,
+            "选择 AI 润色地址或手动填写 OpenAI 兼容地址",
+        )
+        self.ai_polish_api_key_input = QLineEdit(settings.ai_polish_api_key)
+        self.ai_polish_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.ai_polish_api_key_input.setPlaceholderText("AI 润色 API Key，settings.json 已被忽略")
+        self.ai_polish_model_input = self._build_editable_combo(
+            settings.ai_polish_model,
+            TRANSLATION_MODEL_PRESETS,
+            "选择 AI 润色模型或手动填写模型名",
+        )
 
         self.history_limit_input = QSpinBox()
         self.history_limit_input.setRange(1, 100)
@@ -193,6 +211,11 @@ class SettingsPanel(QScrollArea):
             preview_before_insert=self.preview_before_insert_check.isChecked(),
             postprocess_enabled=self.postprocess_check.isChecked(),
             postprocess_mode=self.postprocess_mode_combo.currentText(),
+            dictionary_correction_enabled=self.dictionary_correction_check.isChecked(),
+            ai_polish_enabled=self.ai_polish_check.isChecked(),
+            ai_polish_api_base_url=self.ai_polish_api_base_url_input.currentText().strip(),
+            ai_polish_api_key=self.ai_polish_api_key_input.text().strip(),
+            ai_polish_model=self.ai_polish_model_input.currentText().strip(),
             history_limit=self.history_limit_input.value(),
             sample_rate=sample_rate,
         )
@@ -255,7 +278,12 @@ class SettingsPanel(QScrollArea):
         form.addRow("识别后自动插入", self.auto_insert_check)
         form.addRow("插入前预览确认", self.preview_before_insert_check)
         form.addRow("规则后处理", self.postprocess_check)
+        form.addRow("词典校正", self.dictionary_correction_check)
         form.addRow("文本场景模式", self.postprocess_mode_combo)
+        form.addRow("AI 润色", self.ai_polish_check)
+        form.addRow("AI 润色 API 地址", self.ai_polish_api_base_url_input)
+        form.addRow("AI 润色 API Key", self.ai_polish_api_key_input)
+        form.addRow("AI 润色模型", self.ai_polish_model_input)
         form.addRow("历史记录条数", self.history_limit_input)
         form.addRow(self.save_settings_button)
 

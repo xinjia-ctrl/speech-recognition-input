@@ -29,6 +29,11 @@ class Settings:
     preview_before_insert: bool = True
     postprocess_enabled: bool = True
     postprocess_mode: str = "chat"
+    dictionary_correction_enabled: bool = True
+    ai_polish_enabled: bool = False
+    ai_polish_api_base_url: str = ""
+    ai_polish_api_key: str = ""
+    ai_polish_model: str = ""
     translation_api_base_url: str = ""
     translation_api_key: str = ""
     translation_model: str = ""

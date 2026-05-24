@@ -32,7 +32,7 @@ from app.config_check import build_config_checks
 from app.config import Settings, SettingsStore
 from app.history import HistoryStore
 from app.input import GlobalHotkey, InputInjector
-from app.text_postprocess import postprocess_text
+from app.text_pipeline import process_text_pipeline
 from app.text_tools import redact_secret, tidy_text
 from app.text_translate import translate_text_with_api, translation_button_label
 from app.ui import CompactInputPanel, ConfigCheckPanel, FloatingVoiceBall, SettingsPanel
@@ -618,10 +618,15 @@ class FloatingInputWindow(QMainWindow):
             self.floating_bar.set_audio_level(level)
 
     def _postprocess_text(self, text: str) -> str:
-        return postprocess_text(
+        return process_text_pipeline(
             text,
             mode=self.settings.postprocess_mode,
             enabled=self.settings.postprocess_enabled,
+            dictionary_enabled=self.settings.dictionary_correction_enabled,
+            ai_polish_enabled=self.settings.ai_polish_enabled,
+            ai_api_base_url=self.settings.ai_polish_api_base_url,
+            ai_api_key=self.settings.ai_polish_api_key,
+            ai_model=self.settings.ai_polish_model,
         )
 
     @staticmethod

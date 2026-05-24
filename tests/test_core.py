@@ -17,6 +17,13 @@ from app.asr import (
 )
 from app.history import HistoryStore
 from app.text_postprocess import postprocess_text
+from app.text_pipeline import (
+    DictionaryCorrectionStage,
+    TextPipelineOptions,
+    TextProcessingPipeline,
+    _extract_chat_text,
+    process_text_pipeline,
+)
 from app.text_translate import (
     _extract_translation_text,
     _normalize_translation_result,
@@ -84,6 +91,11 @@ class CoreTestCase(unittest.TestCase):
                 preview_before_insert=False,
                 postprocess_enabled=False,
                 postprocess_mode="code",
+                dictionary_correction_enabled=False,
+                ai_polish_enabled=True,
+                ai_polish_api_base_url="https://example.com/v1/chat/completions",
+                ai_polish_api_key="polish-key",
+                ai_polish_model="qwen-polish",
                 translation_api_base_url="https://example.com/v1/chat/completions",
                 translation_api_key="translate-key",
                 translation_model="qwen-test",
@@ -104,6 +116,11 @@ class CoreTestCase(unittest.TestCase):
         self.assertFalse(loaded.preview_before_insert)
         self.assertFalse(loaded.postprocess_enabled)
         self.assertEqual(loaded.postprocess_mode, "code")
+        self.assertFalse(loaded.dictionary_correction_enabled)
+        self.assertTrue(loaded.ai_polish_enabled)
+        self.assertEqual(loaded.ai_polish_api_base_url, "https://example.com/v1/chat/completions")
+        self.assertEqual(loaded.ai_polish_api_key, "polish-key")
+        self.assertEqual(loaded.ai_polish_model, "qwen-polish")
         self.assertEqual(loaded.translation_api_base_url, "https://example.com/v1/chat/completions")
         self.assertEqual(loaded.translation_api_key, "translate-key")
         self.assertEqual(loaded.translation_model, "qwen-test")
@@ -150,6 +167,21 @@ class CoreTestCase(unittest.TestCase):
 
     def test_postprocess_text_supports_code_mode_replacements(self) -> None:
         self.assertEqual(postprocess_text("i f 语句", "code"), "if :。")
+
+    def test_text_pipeline_applies_dictionary_before_cleanup(self) -> None:
+        self.assertEqual(process_text_pipeline("百练 web socket 能不能用", mode="chat"), "百炼 WebSocket 能不能用？")
+
+    def test_dictionary_stage_can_be_disabled(self) -> None:
+        pipeline = TextProcessingPipeline([DictionaryCorrectionStage()])
+        options = TextPipelineOptions(dictionary_enabled=False)
+
+        self.assertEqual(pipeline.process("百练", options), "百练")
+
+    def test_ai_polish_payload_text_extraction_supports_common_shapes(self) -> None:
+        self.assertEqual(
+            _extract_chat_text({"choices": [{"message": {"content": "帮我确认接口是否上线。"}}]}),
+            "帮我确认接口是否上线。",
+        )
 
     def test_translate_text_uses_language_direction(self) -> None:
         self.assertEqual(translation_button_label("zh"), "中翻英")
