@@ -6,6 +6,7 @@ from app.config import Settings, SettingsStore
 from app.asr import AsrEngine, RealtimeAsrConfig, WebSocketRealtimeAsrClient
 from app.history import HistoryStore
 from app.text_postprocess import postprocess_text
+from app.text_translate import translate_text, translation_button_label
 from app.text_tools import (
     filter_text_by_language,
     redact_secret,
@@ -90,6 +91,12 @@ class CoreTestCase(unittest.TestCase):
 
     def test_postprocess_text_supports_code_mode_replacements(self) -> None:
         self.assertEqual(postprocess_text("i f 语句", "code"), "if :。")
+
+    def test_translate_text_uses_language_direction(self) -> None:
+        self.assertEqual(translation_button_label("zh"), "中翻英")
+        self.assertEqual(translation_button_label("en"), "英翻中")
+        self.assertEqual(translate_text("你好", "zh"), "hello")
+        self.assertEqual(translate_text("hello", "en"), "你好")
 
     def test_realtime_config_defaults_to_short_final_wait(self) -> None:
         settings = Settings()

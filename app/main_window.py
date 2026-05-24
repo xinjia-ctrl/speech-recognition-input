@@ -38,6 +38,7 @@ from app.history import HistoryStore
 from app.input import GlobalHotkey, InputInjector
 from app.text_postprocess import postprocess_text
 from app.text_tools import redact_secret, tidy_text
+from app.text_translate import translate_text, translation_button_label
 
 
 class TranscribeWorker(QThread):
@@ -221,6 +222,7 @@ class CompactInputPanel(QWidget):
     toggle_requested = Signal()
     insert_requested = Signal()
     copy_requested = Signal()
+    translate_requested = Signal()
     settings_requested = Signal()
 
     def __init__(self) -> None:
@@ -249,12 +251,15 @@ class CompactInputPanel(QWidget):
         self.insert_button.clicked.connect(self.insert_requested.emit)
         self.copy_button = QPushButton("复制")
         self.copy_button.clicked.connect(self.copy_requested.emit)
+        self.translate_button = QPushButton("中翻英")
+        self.translate_button.clicked.connect(self.translate_requested.emit)
         self.settings_button = QPushButton("设置")
         self.settings_button.clicked.connect(self.settings_requested.emit)
 
         button_layout.addWidget(self.toggle_button)
         button_layout.addWidget(self.insert_button)
         button_layout.addWidget(self.copy_button)
+        button_layout.addWidget(self.translate_button)
         button_layout.addWidget(self.settings_button)
 
         layout.addWidget(self.preview_edit)
@@ -303,6 +308,9 @@ class CompactInputPanel(QWidget):
 
     def set_recording(self, recording: bool) -> None:
         self.toggle_button.setText("停止" if recording else "开始")
+
+    def set_translation_label(self, label: str) -> None:
+        self.translate_button.setText(label)
 
 
 class FloatingInputWindow(QMainWindow):
@@ -696,7 +704,13 @@ class FloatingInputWindow(QMainWindow):
         self.compact_panel.toggle_requested.connect(self.toggle_compact_recording)
         self.compact_panel.insert_requested.connect(self.insert_preview_text)
         self.compact_panel.copy_requested.connect(self.copy_text)
+        self.compact_panel.translate_requested.connect(self.translate_current_text)
         self.compact_panel.settings_requested.connect(self.show_window)
+        self._update_compact_translation_button()
+
+    def _update_compact_translation_button(self) -> None:
+        if hasattr(self, "compact_panel"):
+            self.compact_panel.set_translation_label(translation_button_label(self.settings.language))
 
     def _position_compact_panel(self) -> None:
         if not hasattr(self, "compact_panel") or not hasattr(self, "floating_bar"):
@@ -756,6 +770,7 @@ class FloatingInputWindow(QMainWindow):
             return
         self.mode_badge.setText(f"模式：{self._provider_label()}")
         self.language_badge.setText(f"语言：{self._language_label()}")
+        self._update_compact_translation_button()
 
     def _set_connection_state(self, text: str) -> None:
         self.connection_badge.setText(text)
@@ -1064,6 +1079,18 @@ class FloatingInputWindow(QMainWindow):
     def tidy_current_text(self) -> None:
         self._set_result_text(tidy_text(self._current_result_text()))
         self._set_feedback("文本已整理")
+
+    @Slot()
+    def translate_current_text(self) -> None:
+        text = self._current_result_text().strip()
+        if not text:
+            self._set_feedback("没有可翻译的文本")
+            return
+        translated = translate_text(text, self.settings.language)
+        self._set_result_text(translated)
+        self.preview_text = translated
+        self._set_feedback(f"已完成{translation_button_label(self.settings.language)}")
+        self._set_floating_bar_state("success", "已翻译", translated, can_insert=True)
 
     @Slot()
     def copy_text(self) -> None:
