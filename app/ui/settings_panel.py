@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QTimer, Signal
+from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -18,6 +19,12 @@ from app.config import Settings
 
 
 Preset = tuple[str, str]
+
+
+class NoWheelComboBox(QComboBox):
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        event.ignore()
+
 
 ASR_API_URL_PRESETS: tuple[Preset, ...] = (
     ("OpenAI | https://api.openai.com/v1/audio/transcriptions", "https://api.openai.com/v1/audio/transcriptions"),
@@ -89,11 +96,11 @@ class SettingsPanel(QScrollArea):
         form.setVerticalSpacing(12)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
-        self.provider_combo = QComboBox()
+        self.provider_combo = NoWheelComboBox()
         self.provider_combo.addItems(["local", "api", "websocket"])
         self.provider_combo.setCurrentText(settings.asr_provider)
 
-        self.model_combo = QComboBox()
+        self.model_combo = NoWheelComboBox()
         self.model_combo.addItems(["tiny", "base", "small"])
         if settings.model_size not in {"tiny", "base", "small"}:
             self.model_combo.addItem(settings.model_size)
@@ -102,7 +109,7 @@ class SettingsPanel(QScrollArea):
         self.model_path_input = QLineEdit(settings.model_path)
         self.model_path_input.setPlaceholderText("更大模型请填写已下载的本地模型目录")
 
-        self.language_input = QComboBox()
+        self.language_input = NoWheelComboBox()
         self.language_input.addItems(["zh", "en"])
         self.language_input.setCurrentText(settings.language if settings.language in {"zh", "en"} else "zh")
 
@@ -177,7 +184,7 @@ class SettingsPanel(QScrollArea):
         self.dictionary_correction_check = QCheckBox()
         self.dictionary_correction_check.setChecked(settings.dictionary_correction_enabled)
 
-        self.postprocess_mode_combo = QComboBox()
+        self.postprocess_mode_combo = NoWheelComboBox()
         self.postprocess_mode_combo.addItems(["chat", "document", "code"])
         if settings.postprocess_mode not in {"chat", "document", "code"}:
             self.postprocess_mode_combo.addItem(settings.postprocess_mode)
@@ -316,7 +323,7 @@ class SettingsPanel(QScrollArea):
         presets: tuple[Preset, ...],
         placeholder: str,
     ) -> QComboBox:
-        combo = QComboBox()
+        combo = NoWheelComboBox()
         combo.setEditable(True)
         current_index = -1
         for index, (label, value) in enumerate(presets):

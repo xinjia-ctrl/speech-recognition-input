@@ -4,6 +4,7 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 
 
 DEFAULT_HISTORY_PATH = Path("data/history.json")
@@ -15,7 +16,18 @@ class HistoryItem:
     created_at: str
 
 
-class HistoryStore:
+@runtime_checkable
+class HistoryRepository(Protocol):
+    limit: int
+
+    def list(self) -> list[HistoryItem]: ...
+
+    def add(self, text: str) -> list[HistoryItem]: ...
+
+    def clear(self) -> None: ...
+
+
+class JsonHistoryRepository:
     def __init__(self, path: Path | str = DEFAULT_HISTORY_PATH, limit: int = 20) -> None:
         self.path = Path(path)
         self.limit = max(1, limit)
@@ -48,3 +60,11 @@ class HistoryStore:
             encoding="utf-8",
         )
         return items
+
+    def clear(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text("[]", encoding="utf-8")
+
+
+class HistoryStore(JsonHistoryRepository):
+    """兼容旧调用名；新代码优先依赖 HistoryRepository 接口。"""

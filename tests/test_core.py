@@ -16,7 +16,7 @@ from app.asr import (
     build_asr_provider,
     is_no_speech_message,
 )
-from app.history import HistoryStore
+from app.history import HistoryRepository, HistoryStore, JsonHistoryRepository
 from app.text_postprocess import postprocess_text
 from app.text_pipeline import (
     DictionaryCorrectionStage,
@@ -315,6 +315,15 @@ class CoreTestCase(unittest.TestCase):
         items = store.add("第三句")
 
         self.assertEqual([item.text for item in items], ["第三句", "第二句"])
+
+    def test_json_history_repository_matches_repository_contract(self) -> None:
+        repository = JsonHistoryRepository(self.tmp_dir / "history.json", limit=2)
+
+        self.assertIsInstance(repository, HistoryRepository)
+        repository.add("第一句")
+        repository.clear()
+
+        self.assertEqual(repository.list(), [])
 
 
 if __name__ == "__main__":
