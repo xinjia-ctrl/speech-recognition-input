@@ -57,6 +57,7 @@ class RealtimeWebSocketWorker(QThread):
     partial = Signal(str)
     final = Signal(str)
     error = Signal(str)
+    level = Signal(float)
 
     def __init__(self, config: RealtimeAsrConfig) -> None:
         super().__init__()
@@ -67,6 +68,7 @@ class RealtimeWebSocketWorker(QThread):
             on_partial=self.partial.emit,
             on_final=self.final.emit,
             on_error=self.error.emit,
+            on_level=self.level.emit,
         )
 
     def stop(self) -> None:
@@ -91,6 +93,7 @@ class FloatingVoiceBall(QWidget):
         self._drag_start: QPoint | None = None
         self._dragging = False
         self._state = "idle"
+        self._level = 0.0
         self._click_timer = QTimer(self)
         self._click_timer.setSingleShot(True)
         self._click_timer.timeout.connect(self.toggle_requested.emit)
@@ -141,6 +144,10 @@ class FloatingVoiceBall(QWidget):
         self.state_label.setText(title)
         self.update()
 
+    def set_audio_level(self, level: float) -> None:
+        self._level = min(max(level, 0.0), 1.0)
+        self.update()
+
     def paintEvent(self, event) -> None:
         super().paintEvent(event)
         painter = QPainter(self)
@@ -149,6 +156,22 @@ class FloatingVoiceBall(QWidget):
         painter.setPen(QPen(QColor("#111827"), 4))
         rect = self.rect().adjusted(3, 3, -3, -3)
         painter.drawEllipse(rect)
+        if self._state in {"listening", "success"}:
+            self._draw_waveform(painter)
+
+    def _draw_waveform(self, painter: QPainter) -> None:
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#111827"))
+        center_x = self.width() // 2
+        base_y = 63
+        bar_width = 5
+        gap = 4
+        levels = [0.45, 0.75, 1.0, 0.75, 0.45]
+        for index, factor in enumerate(levels):
+            height = 6 + int(self._level * 24 * factor)
+            x = center_x - 2 * (bar_width + gap) + index * (bar_width + gap)
+            y = base_y - height // 2
+            painter.drawRoundedRect(x, y, bar_width, height, 2, 2)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -622,6 +645,11 @@ class FloatingInputWindow(QMainWindow):
         if hasattr(self, "floating_bar"):
             self.floating_bar.set_state(state, title, preview, can_insert)
 
+    @Slot(float)
+    def on_audio_level(self, level: float) -> None:
+        if hasattr(self, "floating_bar"):
+            self.floating_bar.set_audio_level(level)
+
     def _postprocess_text(self, text: str) -> str:
         return postprocess_text(
             text,
@@ -736,6 +764,7 @@ class FloatingInputWindow(QMainWindow):
         self.realtime_worker.partial.connect(self.on_realtime_partial)
         self.realtime_worker.final.connect(self.on_realtime_final)
         self.realtime_worker.error.connect(self.on_realtime_error)
+        self.realtime_worker.level.connect(self.on_audio_level)
         self.realtime_worker.finished.connect(self.on_realtime_finished)
         self.realtime_worker.start()
         self._set_record_button_state(recording=True)
@@ -751,6 +780,7 @@ class FloatingInputWindow(QMainWindow):
         self._mark_diagnostic_stop()
         self._set_record_button_state(recording=False)
         self._set_connection_state("结束中")
+        self.on_audio_level(0.0)
         self._set_floating_bar_state("processing", "处理中", "正在结束实时识别")
         self._set_status("停止录音：正在结束 WebSocket 实时识别")
 
@@ -815,7 +845,7 @@ class FloatingInputWindow(QMainWindow):
 
     def start_recording(self) -> None:
         try:
-            self.recorder.start()
+            self.recorder.start(on_level=self.on_audio_level)
         except RecordingError as exc:
             self._show_error(str(exc))
             return
@@ -826,6 +856,7 @@ class FloatingInputWindow(QMainWindow):
         self._set_record_button_state(recording=True)
         self._set_actions_enabled(False)
         self._set_connection_state("录音中")
+        self.on_audio_level(0.0)
         self._set_floating_bar_state("listening", "监听中", "等待你开始说话")
         self._set_feedback("正在录音，结束后会自动识别")
         self._set_status("录音中：再次点击或按快捷键停止")
@@ -846,6 +877,7 @@ class FloatingInputWindow(QMainWindow):
         self._set_record_button_state(recording=False)
         self._set_actions_enabled(False)
         self._set_connection_state("识别中")
+        self.on_audio_level(0.0)
         self._set_floating_bar_state("processing", "处理中", "正在生成文字")
         self._set_feedback("录音已结束，正在生成文字")
         self._set_status(f"识别中：正在使用{self._provider_label()}转写")

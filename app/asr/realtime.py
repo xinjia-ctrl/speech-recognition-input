@@ -5,6 +5,7 @@ import queue
 import threading
 import time
 import uuid
+from array import array
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -43,6 +44,7 @@ class WebSocketRealtimeAsrClient:
         on_partial: Callable[[str], None],
         on_final: Callable[[str], None],
         on_error: Callable[[str], None],
+        on_level: Callable[[float], None] | None = None,
     ) -> None:
         if not self.config.websocket_url:
             on_error("未配置 WebSocket 实时识别地址")
@@ -56,10 +58,10 @@ class WebSocketRealtimeAsrClient:
             return
 
         if self._is_dashscope_url(self.config.websocket_url):
-            self._run_dashscope(websocket, sd, on_partial, on_final, on_error)
+            self._run_dashscope(websocket, sd, on_partial, on_final, on_error, on_level)
             return
 
-        self._run_generic(websocket, sd, on_partial, on_final, on_error)
+        self._run_generic(websocket, sd, on_partial, on_final, on_error, on_level)
 
     def _run_generic(
         self,
@@ -68,6 +70,7 @@ class WebSocketRealtimeAsrClient:
         on_partial: Callable[[str], None],
         on_final: Callable[[str], None],
         on_error: Callable[[str], None],
+        on_level: Callable[[float], None] | None = None,
     ) -> None:
         audio_queue: queue.Queue[bytes] = queue.Queue()
         ws = None
@@ -77,7 +80,9 @@ class WebSocketRealtimeAsrClient:
         def callback(indata, frames, time_info, status) -> None:
             if status:
                 return
-            audio_queue.put(bytes(indata))
+            chunk = bytes(indata)
+            audio_queue.put(chunk)
+            self._emit_pcm_level(chunk, on_level)
 
         def receiver() -> None:
             while not self._stop_event.is_set():
@@ -160,6 +165,7 @@ class WebSocketRealtimeAsrClient:
         on_partial: Callable[[str], None],
         on_final: Callable[[str], None],
         on_error: Callable[[str], None],
+        on_level: Callable[[float], None] | None = None,
     ) -> None:
         audio_queue: queue.Queue[bytes] = queue.Queue()
         ws = None
@@ -172,7 +178,9 @@ class WebSocketRealtimeAsrClient:
         def callback(indata, frames, time_info, status) -> None:
             if status:
                 return
-            audio_queue.put(bytes(indata))
+            chunk = bytes(indata)
+            audio_queue.put(chunk)
+            self._emit_pcm_level(chunk, on_level)
 
         def receiver() -> None:
             while not self._stop_event.is_set():
@@ -289,6 +297,20 @@ class WebSocketRealtimeAsrClient:
     @staticmethod
     def _is_dashscope_url(url: str) -> bool:
         return "dashscope" in url.lower() or "aliyuncs.com/api-ws" in url.lower()
+
+    @staticmethod
+    def _emit_pcm_level(chunk: bytes, on_level: Callable[[float], None] | None) -> None:
+        if on_level is None or not chunk:
+            return
+        try:
+            samples = array("h")
+            samples.frombytes(chunk)
+            if not samples:
+                return
+            rms = (sum(sample * sample for sample in samples) / len(samples)) ** 0.5
+            on_level(min(max(rms / 4096, 0.0), 1.0))
+        except Exception:
+            pass
 
     def _normalize_text(self, text: str) -> str:
         return normalize_realtime_text(text, self.config.language)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import queue
 import wave
+from collections.abc import Callable
 from pathlib import Path
 
 
@@ -27,7 +28,7 @@ class Recorder:
     def is_recording(self) -> bool:
         return self._recording
 
-    def start(self) -> None:
+    def start(self, on_level: Callable[[float], None] | None = None) -> None:
         if self._recording:
             raise RecordingError("录音已经在进行中")
 
@@ -42,6 +43,14 @@ class Recorder:
             if status:
                 self._chunks.put(status)
             self._chunks.put(indata.copy())
+            if on_level is not None:
+                try:
+                    import numpy as np
+
+                    level = float(np.sqrt(np.mean(np.square(indata))))
+                    on_level(min(max(level * 8, 0.0), 1.0))
+                except Exception:
+                    pass
 
         try:
             self._stream = sd.InputStream(
