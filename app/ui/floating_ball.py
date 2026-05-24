@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QLabel, QMenu, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QMenu, QWidget
 
 
 class FloatingVoiceBall(QWidget):
     toggle_requested = Signal()
     panel_requested = Signal()
     insert_requested = Signal()
+    close_requested = Signal()
     quit_requested = Signal()
     moved = Signal()
 
@@ -24,14 +25,15 @@ class FloatingVoiceBall(QWidget):
         super().__init__()
         self._drag_start: QPoint | None = None
         self._dragging = False
+        self._close_pressed = False
         self._state = "idle"
         self._level = 0.0
         self._click_timer = QTimer(self)
         self._click_timer.setSingleShot(True)
         self._click_timer.timeout.connect(self.toggle_requested.emit)
         self.setWindowTitle("语音输入器")
-        self.setFixedSize(92, 92)
-        self.setToolTip("单击开始/停止录音，拖动移动，右键打开菜单")
+        self.setFixedSize(60, 60)
+        self.setToolTip("单击开始/停止录音，右上角关闭，拖动移动，右键打开菜单")
         self.setWindowFlags(
             Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
@@ -39,31 +41,7 @@ class FloatingVoiceBall(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setObjectName("floatingVoiceBall")
-        self._build_ui()
         self.set_state("idle", "待机", "点击开始语音输入")
-
-    def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(0)
-
-        self.state_label = QLabel("待机")
-        self.state_label.setObjectName("ballStateLabel")
-        self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        layout.addWidget(self.state_label)
-        self._apply_styles()
-
-    def _apply_styles(self) -> None:
-        self.setStyleSheet(
-            """
-            QLabel#ballStateLabel {
-                color: #111827;
-                font-size: 15px;
-                font-weight: 700;
-            }
-            """
-        )
 
     def set_state(
         self,
@@ -73,7 +51,6 @@ class FloatingVoiceBall(QWidget):
         can_insert: bool = False,
     ) -> None:
         self._state = state
-        self.state_label.setText(title)
         self.update()
 
     def set_audio_level(self, level: float) -> None:
@@ -85,28 +62,56 @@ class FloatingVoiceBall(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setBrush(QColor(self.COLORS.get(self._state, self.COLORS["idle"])))
-        painter.setPen(QPen(QColor("#111827"), 4))
-        rect = self.rect().adjusted(3, 3, -3, -3)
+        painter.setPen(QPen(QColor("#111827"), 3))
+        rect = self.rect().adjusted(4, 4, -4, -4)
         painter.drawEllipse(rect)
+        self._draw_recorder_icon(painter)
         if self._state in {"listening", "success"}:
             self._draw_waveform(painter)
+        self._draw_close_button(painter)
+
+    def _draw_recorder_icon(self, painter: QPainter) -> None:
+        painter.setPen(QPen(QColor("#111827"), 3))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        center_x = self.width() // 2
+        painter.drawRoundedRect(center_x - 7, 16, 14, 18, 7, 7)
+        painter.drawLine(center_x - 12, 27, center_x - 12, 30)
+        painter.drawArc(center_x - 13, 21, 26, 20, 200 * 16, 140 * 16)
+        painter.drawLine(center_x, 35, center_x, 42)
+        painter.drawLine(center_x - 8, 42, center_x + 8, 42)
+
+    def _draw_close_button(self, painter: QPainter) -> None:
+        rect = self._close_rect()
+        painter.setBrush(QColor("#111827"))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(rect, 6, 6)
+        painter.setPen(QPen(QColor("#ffffff"), 1))
+        painter.drawLine(rect.left() + 4, rect.top() + 4, rect.right() - 4, rect.bottom() - 4)
+        painter.drawLine(rect.right() - 4, rect.top() + 4, rect.left() + 4, rect.bottom() - 4)
+
+    def _close_rect(self) -> QRect:
+        return QRect(self.width() - 18, 2, 14, 14)
 
     def _draw_waveform(self, painter: QPainter) -> None:
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor("#111827"))
         center_x = self.width() // 2
-        base_y = 63
-        bar_width = 5
-        gap = 4
+        base_y = 51
+        bar_width = 2
+        gap = 3
         levels = [0.45, 0.75, 1.0, 0.75, 0.45]
         for index, factor in enumerate(levels):
-            height = 6 + int(self._level * 24 * factor)
+            height = 3 + int(self._level * 12 * factor)
             x = center_x - 2 * (bar_width + gap) + index * (bar_width + gap)
             y = base_y - height // 2
             painter.drawRoundedRect(x, y, bar_width, height, 2, 2)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
+            if self._close_rect().contains(event.position().toPoint()):
+                self._close_pressed = True
+                event.accept()
+                return
             self._drag_start = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             self._dragging = False
         super().mousePressEvent(event)
@@ -121,6 +126,12 @@ class FloatingVoiceBall(QWidget):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self._close_pressed:
+            self._close_pressed = False
+            if self._close_rect().contains(event.position().toPoint()):
+                self.close_requested.emit()
+            event.accept()
+            return
         if event.button() == Qt.MouseButton.LeftButton and not self._dragging:
             self._drag_start = None
             self._click_timer.start(180)

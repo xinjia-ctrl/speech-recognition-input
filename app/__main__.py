@@ -19,8 +19,7 @@ def main() -> int:
     app.setQuitOnLastWindowClosed(False)
 
     settings_store = SettingsStore()
-    window = FloatingInputWindow(settings_store)
-    window.show()
+    _window = FloatingInputWindow(settings_store)
 
     return app.exec()
 

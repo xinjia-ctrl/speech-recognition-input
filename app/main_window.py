@@ -132,7 +132,7 @@ class FloatingInputWindow(QMainWindow):
         self._close_tip_shown = False
         self.hotkey_active = False
         self.microphone_available: bool | None = None
-        self.hotkey_pressed.connect(self.toggle_compact_recording)
+        self.hotkey_pressed.connect(self.on_hotkey_pressed)
         self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
 
         self.setWindowTitle("语音输入器")
@@ -200,6 +200,7 @@ class FloatingInputWindow(QMainWindow):
 
         self.record_button = QPushButton("开始说话")
         self.record_button.setObjectName("primaryButton")
+        self.record_button.setToolTip("开始/停止录音")
         self.record_button.clicked.connect(lambda: self.toggle_recording(show_panel=True))
         self.tidy_button = QPushButton("整理文本")
         self.tidy_button.setObjectName("secondaryButton")
@@ -498,6 +499,7 @@ class FloatingInputWindow(QMainWindow):
         self.floating_bar.toggle_requested.connect(self.toggle_compact_recording)
         self.floating_bar.panel_requested.connect(self.show_compact_panel)
         self.floating_bar.insert_requested.connect(self.insert_preview_text)
+        self.floating_bar.close_requested.connect(self.hide_floating_button)
         self.floating_bar.quit_requested.connect(self.quit_app)
         self.floating_bar.moved.connect(self._position_compact_panel)
         self.floating_bar.move(80, 160)
@@ -523,6 +525,22 @@ class FloatingInputWindow(QMainWindow):
             return
         ball_rect = self.floating_bar.geometry()
         self.compact_panel.move(ball_rect.right(), ball_rect.top())
+
+    @Slot()
+    def on_hotkey_pressed(self) -> None:
+        if hasattr(self, "floating_bar") and not self.floating_bar.isVisible():
+            self.floating_bar.show()
+            self.floating_bar.raise_()
+            self._set_status(f"待机：按 {self.settings.hotkey} 开始/停止录音")
+            return
+        self.toggle_compact_recording()
+
+    @Slot()
+    def hide_floating_button(self) -> None:
+        if hasattr(self, "compact_panel"):
+            self.compact_panel.hide()
+        self.floating_bar.hide()
+        self._set_status(f"悬浮按钮已隐藏：按 {self.settings.hotkey} 唤醒")
 
     def _set_status(self, text: str) -> None:
         self.status_label.setText(text)
