@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.config_check import ASR_API_MODEL_RULES, TRANSLATION_MODEL_RULES, WEBSOCKET_MODEL_RULES, model_match_hint
 from app.config import Settings
 
 
@@ -24,11 +25,6 @@ ASR_API_URL_PRESETS = (
 ASR_API_MODEL_PRESETS = (
     "whisper-1",
     "paraformer-v2",
-)
-
-ASR_API_MODEL_RULES = (
-    ("api.openai.com", ("whisper-1",)),
-    ("dashscope.aliyuncs.com", ("paraformer-v2",)),
 )
 
 TRANSLATION_API_URL_PRESETS = (
@@ -44,18 +40,6 @@ TRANSLATION_MODEL_PRESETS = (
     "qwen-plus",
 )
 
-TRANSLATION_MODEL_RULES = (
-    (
-        "api.siliconflow.cn",
-        (
-            "Qwen/Qwen2.5-7B-Instruct",
-            "Qwen/Qwen2.5-1.5B-Instruct",
-            "Qwen/Qwen2.5-14B-Instruct",
-        ),
-    ),
-    ("dashscope.aliyuncs.com", ("qwen-turbo", "qwen-plus")),
-)
-
 WEBSOCKET_URL_PRESETS = (
     "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
 )
@@ -64,11 +48,6 @@ WEBSOCKET_MODEL_PRESETS = (
     "paraformer-realtime-v2",
     "paraformer-realtime-v1",
 )
-
-WEBSOCKET_MODEL_RULES = (
-    ("dashscope.aliyuncs.com", ("paraformer-realtime-v2", "paraformer-realtime-v1")),
-)
-
 
 class SettingsPanel(QScrollArea):
     save_requested = Signal()
@@ -240,7 +219,7 @@ class SettingsPanel(QScrollArea):
             ),
         )
         for label, url, model, rules in hints:
-            hint = self._model_match_hint(url, model, rules)
+            hint = model_match_hint(url, model, rules)
             label.setText(hint)
             label.setVisible(bool(hint))
 
@@ -304,23 +283,3 @@ class SettingsPanel(QScrollArea):
         label.setWordWrap(True)
         label.setVisible(False)
         return label
-
-    @staticmethod
-    def _model_match_hint(
-        url: str,
-        model: str,
-        rules: tuple[tuple[str, tuple[str, ...]], ...],
-    ) -> str:
-        normalized_url = url.strip().lower()
-        normalized_model = model.strip()
-        if not normalized_url or not normalized_model:
-            return ""
-
-        for url_marker, allowed_models in rules:
-            if url_marker.lower() not in normalized_url:
-                continue
-            if normalized_model in allowed_models:
-                return ""
-            return f"当前地址通常使用：{', '.join(allowed_models)}"
-
-        return "这是自定义地址，请确认模型名与该服务商接口匹配"

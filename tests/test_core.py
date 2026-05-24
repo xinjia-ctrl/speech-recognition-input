@@ -2,6 +2,7 @@ import os
 import unittest
 from pathlib import Path
 
+from app.config_check import build_config_checks, model_match_hint, TRANSLATION_MODEL_RULES
 from app.config import Settings, SettingsStore
 from app.asr import AsrEngine, RealtimeAsrConfig, WebSocketRealtimeAsrClient
 from app.history import HistoryStore
@@ -96,6 +97,43 @@ class CoreTestCase(unittest.TestCase):
         self.assertEqual(loaded.translation_api_base_url, "https://example.com/v1/chat/completions")
         self.assertEqual(loaded.translation_api_key, "translate-key")
         self.assertEqual(loaded.translation_model, "qwen-test")
+
+    def test_model_match_hint_detects_provider_mismatch(self) -> None:
+        self.assertIn(
+            "qwen-turbo",
+            model_match_hint(
+                "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                "Qwen/Qwen2.5-7B-Instruct",
+                TRANSLATION_MODEL_RULES,
+            ),
+        )
+        self.assertEqual(
+            model_match_hint(
+                "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                "qwen-plus",
+                TRANSLATION_MODEL_RULES,
+            ),
+            "",
+        )
+
+    def test_build_config_checks_marks_active_api_missing_as_error(self) -> None:
+        checks = build_config_checks(Settings(asr_provider="api"), microphone_available=True, hotkey_available=True)
+        http_check = next(item for item in checks if item.key == "http_asr")
+
+        self.assertEqual(http_check.status, "error")
+        self.assertIn("地址", http_check.detail)
+
+    def test_build_config_checks_marks_complete_translation_as_ok(self) -> None:
+        checks = build_config_checks(
+            Settings(
+                translation_api_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                translation_api_key="test-key",
+                translation_model="qwen-plus",
+            )
+        )
+        translation_check = next(item for item in checks if item.key == "translation")
+
+        self.assertEqual(translation_check.status, "ok")
 
     def test_postprocess_text_removes_fillers_and_adds_question_mark(self) -> None:
         self.assertEqual(postprocess_text("呃 这个 能不能 帮我 看一下", "chat"), "能不能 帮我 看一下？")

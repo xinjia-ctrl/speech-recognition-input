@@ -29,13 +29,14 @@ from app.asr import (
     WebSocketRealtimeAsrClient,
 )
 from app.audio import Recorder, RecordingError
+from app.config_check import build_config_checks
 from app.config import Settings, SettingsStore
 from app.history import HistoryStore
 from app.input import GlobalHotkey, InputInjector
 from app.text_postprocess import postprocess_text
 from app.text_tools import redact_secret, tidy_text
 from app.text_translate import translate_text_with_api, translation_button_label
-from app.ui import CompactInputPanel, FloatingVoiceBall, SettingsPanel
+from app.ui import CompactInputPanel, ConfigCheckPanel, FloatingVoiceBall, SettingsPanel
 
 
 class TranscribeWorker(QThread):
@@ -129,6 +130,8 @@ class FloatingInputWindow(QMainWindow):
         self._diagnostic_finished_at: float | None = None
         self._diagnostic_last_error = ""
         self._close_tip_shown = False
+        self.hotkey_active = False
+        self.microphone_available: bool | None = None
         self.hotkey_pressed.connect(self.toggle_compact_recording)
         self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
 
@@ -140,7 +143,8 @@ class FloatingInputWindow(QMainWindow):
         self._build_compact_panel()
         self._refresh_history()
 
-        if not self.hotkey.start():
+        self.hotkey_active = self.hotkey.start()
+        if not self.hotkey_active:
             self._set_status("待机：全局快捷键依赖未安装，可使用窗口按钮")
         else:
             self._set_status(f"待机：按 {self.settings.hotkey} 开始/停止录音")
@@ -231,6 +235,8 @@ class FloatingInputWindow(QMainWindow):
 
         self.settings_panel = SettingsPanel(self.settings)
         self.settings_panel.save_requested.connect(self.save_settings)
+        self.config_check_panel = ConfigCheckPanel()
+        self.config_check_panel.refresh_requested.connect(self.refresh_config_checks)
 
         diagnostics_page = QWidget()
         diagnostics_form = QFormLayout(diagnostics_page)
@@ -262,12 +268,14 @@ class FloatingInputWindow(QMainWindow):
         tabs.addTab(input_page, "输入")
         tabs.addTab(history_page, "历史")
         tabs.addTab(self.settings_panel, "设置")
+        tabs.addTab(self.config_check_panel, "检查")
         tabs.addTab(diagnostics_page, "诊断")
         layout.addWidget(tabs)
         self.setCentralWidget(root)
         self._apply_styles()
         self._update_context_badges()
         self.settings_panel.refresh_hints()
+        self.refresh_config_checks()
         self._refresh_diagnostics()
 
     def _apply_styles(self) -> None:
@@ -328,6 +336,49 @@ class FloatingInputWindow(QMainWindow):
                 border: 1px solid #fde68a;
                 border-radius: 6px;
                 padding: 6px 8px;
+            }
+            QWidget#configCheckPage {
+                background: #ffffff;
+            }
+            QLabel#checkPageTitle {
+                color: #172033;
+                font-size: 16px;
+                font-weight: 700;
+            }
+            QLabel#checkSummaryLabel {
+                color: #384153;
+                background: #f7f9fc;
+                border: 1px solid #d9dee7;
+                border-radius: 8px;
+                padding: 8px 10px;
+            }
+            QFrame#configCheckItem {
+                border: 1px solid #d9dee7;
+                border-radius: 8px;
+                background: #ffffff;
+            }
+            QFrame#configCheckItem[status="ok"] {
+                border-color: #b8e3dc;
+                background: #f0fdfa;
+            }
+            QFrame#configCheckItem[status="warning"] {
+                border-color: #fde68a;
+                background: #fffbeb;
+            }
+            QFrame#configCheckItem[status="error"] {
+                border-color: #fecaca;
+                background: #fef2f2;
+            }
+            QLabel#checkStatusLabel {
+                color: #172033;
+                font-weight: 700;
+            }
+            QLabel#checkTitleLabel {
+                color: #172033;
+                font-weight: 700;
+            }
+            QLabel#checkDetailLabel {
+                color: #5d6675;
             }
             QFrame#header {
                 border: 1px solid #d9dee7;
@@ -528,6 +579,26 @@ class FloatingInputWindow(QMainWindow):
     def _set_connection_state(self, text: str) -> None:
         self.connection_badge.setText(text)
         self._refresh_diagnostics()
+
+    def refresh_config_checks(self) -> None:
+        self.microphone_available = self._detect_microphone_available()
+        self.config_check_panel.set_items(
+            build_config_checks(
+                self.settings,
+                microphone_available=self.microphone_available,
+                hotkey_available=self.hotkey_active,
+            )
+        )
+
+    @staticmethod
+    def _detect_microphone_available() -> bool:
+        try:
+            import sounddevice as sd
+
+            sd.query_devices(kind="input")
+        except Exception:
+            return False
+        return True
 
     def _set_floating_bar_state(
         self,
@@ -927,11 +998,13 @@ class FloatingInputWindow(QMainWindow):
         if self._engine_settings_changed(previous_settings, self.settings):
             self.asr_engine = self._build_engine()
         self.history.limit = self.settings.history_limit
+        self.refresh_config_checks()
         self._refresh_diagnostics()
         if restart_hotkey:
             self.hotkey.stop()
             self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
-            self.hotkey.start()
+            self.hotkey_active = self.hotkey.start()
+            self.refresh_config_checks()
 
     @staticmethod
     def _engine_settings_changed(old: Settings, new: Settings) -> bool:
