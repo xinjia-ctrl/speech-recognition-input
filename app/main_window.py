@@ -42,6 +42,53 @@ from app.text_tools import redact_secret, tidy_text
 from app.text_translate import translate_text_with_api, translation_button_label
 
 
+ASR_API_URL_PRESETS = (
+    "https://api.openai.com/v1/audio/transcriptions",
+    "https://dashscope.aliyuncs.com/compatible-mode/v1/audio/transcriptions",
+)
+
+ASR_API_MODEL_PRESETS = (
+    "whisper-1",
+    "paraformer-v2",
+)
+
+ASR_API_MODEL_RULES = (
+    ("api.openai.com", ("whisper-1",)),
+    ("dashscope.aliyuncs.com", ("paraformer-v2",)),
+)
+
+TRANSLATION_API_URL_PRESETS = (
+    "https://api.siliconflow.cn/v1/chat/completions",
+    "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+)
+
+TRANSLATION_MODEL_PRESETS = (
+    "Qwen/Qwen2.5-7B-Instruct",
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    "Qwen/Qwen2.5-14B-Instruct",
+    "qwen-turbo",
+    "qwen-plus",
+)
+
+TRANSLATION_MODEL_RULES = (
+    ("api.siliconflow.cn", ("Qwen/Qwen2.5-7B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct", "Qwen/Qwen2.5-14B-Instruct")),
+    ("dashscope.aliyuncs.com", ("qwen-turbo", "qwen-plus")),
+)
+
+WEBSOCKET_URL_PRESETS = (
+    "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
+)
+
+WEBSOCKET_MODEL_PRESETS = (
+    "paraformer-realtime-v2",
+    "paraformer-realtime-v1",
+)
+
+WEBSOCKET_MODEL_RULES = (
+    ("dashscope.aliyuncs.com", ("paraformer-realtime-v2", "paraformer-realtime-v1")),
+)
+
+
 class TranscribeWorker(QThread):
     partial = Signal(str)
     finished = Signal(object)
@@ -398,6 +445,51 @@ class FloatingInputWindow(QMainWindow):
             api_model=self.settings.api_model,
         )
 
+    @staticmethod
+    def _build_editable_combo(
+        current_value: str,
+        presets: tuple[str, ...],
+        placeholder: str,
+    ) -> QComboBox:
+        combo = QComboBox()
+        combo.setEditable(True)
+        combo.addItems(presets)
+        if current_value and current_value not in presets:
+            combo.addItem(current_value)
+        combo.setCurrentText(current_value)
+        line_edit = combo.lineEdit()
+        if line_edit is not None:
+            line_edit.setPlaceholderText(placeholder)
+        return combo
+
+    @staticmethod
+    def _create_config_hint_label() -> QLabel:
+        label = QLabel("")
+        label.setObjectName("configHintLabel")
+        label.setWordWrap(True)
+        label.setVisible(False)
+        return label
+
+    @staticmethod
+    def _model_match_hint(
+        url: str,
+        model: str,
+        rules: tuple[tuple[str, tuple[str, ...]], ...],
+    ) -> str:
+        normalized_url = url.strip().lower()
+        normalized_model = model.strip()
+        if not normalized_url or not normalized_model:
+            return ""
+
+        for url_marker, allowed_models in rules:
+            if url_marker.lower() not in normalized_url:
+                continue
+            if normalized_model in allowed_models:
+                return ""
+            return f"当前地址通常使用：{', '.join(allowed_models)}"
+
+        return "这是自定义地址，请确认模型名与该服务商接口匹配"
+
     def _build_ui(self) -> None:
         root = QWidget()
         layout = QVBoxLayout(root)
@@ -494,33 +586,52 @@ class FloatingInputWindow(QMainWindow):
         self.language_input = QComboBox()
         self.language_input.addItems(["zh", "en"])
         self.language_input.setCurrentText(self.settings.language if self.settings.language in {"zh", "en"} else "zh")
-        self.api_base_url_input = QLineEdit(self.settings.api_base_url)
-        self.api_base_url_input.setPlaceholderText("https://example.com/v1/audio/transcriptions")
+        self.api_base_url_input = self._build_editable_combo(
+            self.settings.api_base_url,
+            ASR_API_URL_PRESETS,
+            "选择常用 HTTP 识别地址或手动填写",
+        )
         self.api_key_input = QLineEdit(self.settings.api_key)
         self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key_input.setPlaceholderText("云端 API Key，settings.json 已被忽略")
-        self.api_model_input = QLineEdit(self.settings.api_model)
-        self.api_model_input.setPlaceholderText("例如 whisper-1 或服务商模型名")
-        self.translation_api_base_url_input = QLineEdit(self.settings.translation_api_base_url)
-        self.translation_api_base_url_input.setPlaceholderText(
-            "https://api.siliconflow.cn/v1/chat/completions"
+        self.api_model_input = self._build_editable_combo(
+            self.settings.api_model,
+            ASR_API_MODEL_PRESETS,
+            "选择常用 HTTP 识别模型或手动填写",
+        )
+        self.api_model_hint = self._create_config_hint_label()
+        self.translation_api_base_url_input = self._build_editable_combo(
+            self.settings.translation_api_base_url,
+            TRANSLATION_API_URL_PRESETS,
+            "选择常用翻译地址或手动填写 OpenAI 兼容地址",
         )
         self.translation_api_key_input = QLineEdit(self.settings.translation_api_key)
         self.translation_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.translation_api_key_input.setPlaceholderText("翻译 API Key，settings.json 已被忽略")
-        self.translation_model_input = QLineEdit(self.settings.translation_model)
-        self.translation_model_input.setPlaceholderText("例如 Qwen/Qwen2.5-7B-Instruct")
+        self.translation_model_input = self._build_editable_combo(
+            self.settings.translation_model,
+            TRANSLATION_MODEL_PRESETS,
+            "选择常用翻译模型或手动填写模型名",
+        )
+        self.translation_model_hint = self._create_config_hint_label()
         self.local_beam_size_input = QSpinBox()
         self.local_beam_size_input.setRange(1, 5)
         self.local_beam_size_input.setValue(self.settings.local_beam_size)
         self.local_beam_size_input.setToolTip("数值越小越快，输入法场景建议保持 1")
-        self.websocket_url_input = QLineEdit(self.settings.websocket_url)
-        self.websocket_url_input.setPlaceholderText("wss://example.com/realtime/asr")
+        self.websocket_url_input = self._build_editable_combo(
+            self.settings.websocket_url,
+            WEBSOCKET_URL_PRESETS,
+            "选择常用 WebSocket 地址或手动填写",
+        )
         self.websocket_api_key_input = QLineEdit(self.settings.websocket_api_key)
         self.websocket_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.websocket_api_key_input.setPlaceholderText("实时识别 API Key，留空则尝试使用 API Key")
-        self.websocket_model_input = QLineEdit(self.settings.websocket_model)
-        self.websocket_model_input.setPlaceholderText("实时识别模型名，按服务商要求填写")
+        self.websocket_model_input = self._build_editable_combo(
+            self.settings.websocket_model,
+            WEBSOCKET_MODEL_PRESETS,
+            "选择常用实时识别模型或手动填写",
+        )
+        self.websocket_model_hint = self._create_config_hint_label()
         self.realtime_chunk_input = QSpinBox()
         self.realtime_chunk_input.setRange(50, 2000)
         self.realtime_chunk_input.setSingleStep(50)
@@ -547,6 +658,12 @@ class FloatingInputWindow(QMainWindow):
         self.history_limit_input.setValue(self.settings.history_limit)
         self.save_settings_button = QPushButton("保存设置")
         self.save_settings_button.clicked.connect(self.save_settings)
+        for combo in (self.api_base_url_input, self.api_model_input):
+            combo.currentTextChanged.connect(self._refresh_config_hints)
+        for combo in (self.translation_api_base_url_input, self.translation_model_input):
+            combo.currentTextChanged.connect(self._refresh_config_hints)
+        for combo in (self.websocket_url_input, self.websocket_model_input):
+            combo.currentTextChanged.connect(self._refresh_config_hints)
         form.addRow("识别模式", self.provider_combo)
         form.addRow("本地模型大小", self.model_combo)
         form.addRow("本地模型路径", self.model_path_input)
@@ -554,13 +671,16 @@ class FloatingInputWindow(QMainWindow):
         form.addRow("API 地址", self.api_base_url_input)
         form.addRow("API Key", self.api_key_input)
         form.addRow("API 模型", self.api_model_input)
+        form.addRow("", self.api_model_hint)
         form.addRow("翻译 API 地址", self.translation_api_base_url_input)
         form.addRow("翻译 API Key", self.translation_api_key_input)
         form.addRow("翻译模型", self.translation_model_input)
+        form.addRow("", self.translation_model_hint)
         form.addRow("本地搜索宽度", self.local_beam_size_input)
         form.addRow("WebSocket 地址", self.websocket_url_input)
         form.addRow("WebSocket API Key", self.websocket_api_key_input)
         form.addRow("WebSocket 模型", self.websocket_model_input)
+        form.addRow("", self.websocket_model_hint)
         form.addRow("实时音频块(ms)", self.realtime_chunk_input)
         form.addRow("实时收尾等待(ms)", self.websocket_final_wait_input)
         form.addRow("全局快捷键", self.hotkey_input)
@@ -606,6 +726,7 @@ class FloatingInputWindow(QMainWindow):
         self.setCentralWidget(root)
         self._apply_styles()
         self._update_context_badges()
+        self._refresh_config_hints()
         self._refresh_diagnostics()
 
     def _apply_styles(self) -> None:
@@ -659,6 +780,13 @@ class FloatingInputWindow(QMainWindow):
             QScrollBar::add-line:vertical,
             QScrollBar::sub-line:vertical {
                 height: 0;
+            }
+            QLabel#configHintLabel {
+                color: #92400e;
+                background: #fffbeb;
+                border: 1px solid #fde68a;
+                border-radius: 6px;
+                padding: 6px 8px;
             }
             QFrame#header {
                 border: 1px solid #d9dee7;
@@ -795,6 +923,32 @@ class FloatingInputWindow(QMainWindow):
     def _update_compact_translation_button(self) -> None:
         if hasattr(self, "compact_panel"):
             self.compact_panel.set_translation_label(translation_button_label(self.settings.language))
+
+    def _refresh_config_hints(self, *_args: object) -> None:
+        hints = (
+            (
+                self.api_model_hint,
+                self.api_base_url_input.currentText(),
+                self.api_model_input.currentText(),
+                ASR_API_MODEL_RULES,
+            ),
+            (
+                self.translation_model_hint,
+                self.translation_api_base_url_input.currentText(),
+                self.translation_model_input.currentText(),
+                TRANSLATION_MODEL_RULES,
+            ),
+            (
+                self.websocket_model_hint,
+                self.websocket_url_input.currentText(),
+                self.websocket_model_input.currentText(),
+                WEBSOCKET_MODEL_RULES,
+            ),
+        )
+        for label, url, model, rules in hints:
+            hint = self._model_match_hint(url, model, rules)
+            label.setText(hint)
+            label.setVisible(bool(hint))
 
     def _position_compact_panel(self) -> None:
         if not hasattr(self, "compact_panel") or not hasattr(self, "floating_bar"):
@@ -1255,16 +1409,16 @@ class FloatingInputWindow(QMainWindow):
             model_size=self.model_combo.currentText(),
             model_path=self.model_path_input.text().strip(),
             language=self.language_input.currentText(),
-            api_base_url=self.api_base_url_input.text().strip(),
+            api_base_url=self.api_base_url_input.currentText().strip(),
             api_key=self.api_key_input.text().strip(),
-            api_model=self.api_model_input.text().strip(),
-            translation_api_base_url=self.translation_api_base_url_input.text().strip(),
+            api_model=self.api_model_input.currentText().strip(),
+            translation_api_base_url=self.translation_api_base_url_input.currentText().strip(),
             translation_api_key=self.translation_api_key_input.text().strip(),
-            translation_model=self.translation_model_input.text().strip(),
+            translation_model=self.translation_model_input.currentText().strip(),
             local_beam_size=self.local_beam_size_input.value(),
-            websocket_url=self.websocket_url_input.text().strip(),
+            websocket_url=self.websocket_url_input.currentText().strip(),
             websocket_api_key=self.websocket_api_key_input.text().strip(),
-            websocket_model=self.websocket_model_input.text().strip(),
+            websocket_model=self.websocket_model_input.currentText().strip(),
             realtime_chunk_ms=self.realtime_chunk_input.value(),
             websocket_final_wait_ms=self.websocket_final_wait_input.value(),
             hotkey=self.hotkey_input.text().strip() or "ctrl+alt+space",
@@ -1276,6 +1430,7 @@ class FloatingInputWindow(QMainWindow):
             sample_rate=self.settings.sample_rate,
         )
         self._update_context_badges()
+        self._refresh_config_hints()
         if save:
             self.settings_store.save(self.settings)
         if self._engine_settings_changed(previous_settings, self.settings):
