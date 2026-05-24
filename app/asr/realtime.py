@@ -13,7 +13,6 @@ from typing import Any
 from app.text_tools import (
     filter_text_by_language,
     redact_secret,
-    remove_cjk_false_positive_text,
     tidy_text,
     to_simplified_chinese,
 )

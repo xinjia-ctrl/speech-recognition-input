@@ -1,0 +1,15 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [
+    ".test_tmp",
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B"]
+ignore = ["B904"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

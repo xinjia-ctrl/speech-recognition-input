@@ -2,24 +2,19 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QPoint, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QColor, QPainter, QPen, QTextCursor
+from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtGui import QAction, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
-    QComboBox,
     QFormLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QMainWindow,
     QMenu,
     QMessageBox,
     QPushButton,
-    QScrollArea,
-    QSpinBox,
     QSystemTrayIcon,
     QTabWidget,
     QTextEdit,
@@ -40,53 +35,7 @@ from app.input import GlobalHotkey, InputInjector
 from app.text_postprocess import postprocess_text
 from app.text_tools import redact_secret, tidy_text
 from app.text_translate import translate_text_with_api, translation_button_label
-
-
-ASR_API_URL_PRESETS = (
-    "https://api.openai.com/v1/audio/transcriptions",
-    "https://dashscope.aliyuncs.com/compatible-mode/v1/audio/transcriptions",
-)
-
-ASR_API_MODEL_PRESETS = (
-    "whisper-1",
-    "paraformer-v2",
-)
-
-ASR_API_MODEL_RULES = (
-    ("api.openai.com", ("whisper-1",)),
-    ("dashscope.aliyuncs.com", ("paraformer-v2",)),
-)
-
-TRANSLATION_API_URL_PRESETS = (
-    "https://api.siliconflow.cn/v1/chat/completions",
-    "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-)
-
-TRANSLATION_MODEL_PRESETS = (
-    "Qwen/Qwen2.5-7B-Instruct",
-    "Qwen/Qwen2.5-1.5B-Instruct",
-    "Qwen/Qwen2.5-14B-Instruct",
-    "qwen-turbo",
-    "qwen-plus",
-)
-
-TRANSLATION_MODEL_RULES = (
-    ("api.siliconflow.cn", ("Qwen/Qwen2.5-7B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct", "Qwen/Qwen2.5-14B-Instruct")),
-    ("dashscope.aliyuncs.com", ("qwen-turbo", "qwen-plus")),
-)
-
-WEBSOCKET_URL_PRESETS = (
-    "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
-)
-
-WEBSOCKET_MODEL_PRESETS = (
-    "paraformer-realtime-v2",
-    "paraformer-realtime-v1",
-)
-
-WEBSOCKET_MODEL_RULES = (
-    ("dashscope.aliyuncs.com", ("paraformer-realtime-v2", "paraformer-realtime-v1")),
-)
+from app.ui import CompactInputPanel, FloatingVoiceBall, SettingsPanel
 
 
 class TranscribeWorker(QThread):
@@ -158,243 +107,6 @@ class RealtimeWebSocketWorker(QThread):
         self.client.stop()
 
 
-class FloatingVoiceBall(QWidget):
-    toggle_requested = Signal()
-    panel_requested = Signal()
-    insert_requested = Signal()
-    quit_requested = Signal()
-    moved = Signal()
-    COLORS = {
-        "idle": "#AAAAAA",
-        "listening": "#FF4136",
-        "processing": "#FF851B",
-        "error": "#FFDC00",
-        "success": "#2ECC40",
-    }
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._drag_start: QPoint | None = None
-        self._dragging = False
-        self._state = "idle"
-        self._level = 0.0
-        self._click_timer = QTimer(self)
-        self._click_timer.setSingleShot(True)
-        self._click_timer.timeout.connect(self.toggle_requested.emit)
-        self.setWindowTitle("语音输入器")
-        self.setFixedSize(92, 92)
-        self.setToolTip("单击开始/停止录音，拖动移动，右键打开菜单")
-        self.setWindowFlags(
-            Qt.WindowType.Tool
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-        )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setObjectName("floatingVoiceBall")
-        self._build_ui()
-        self.set_state("idle", "待机", "点击开始语音输入")
-
-    def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(0)
-
-        self.state_label = QLabel("待机")
-        self.state_label.setObjectName("ballStateLabel")
-        self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        layout.addWidget(self.state_label)
-        self._apply_styles()
-
-    def _apply_styles(self) -> None:
-        self.setStyleSheet(
-            """
-            QLabel#ballStateLabel {
-                color: #111827;
-                font-size: 15px;
-                font-weight: 700;
-            }
-            """
-        )
-
-    def set_state(
-        self,
-        state: str,
-        title: str,
-        preview: str,
-        can_insert: bool = False,
-    ) -> None:
-        self._state = state
-        self.state_label.setText(title)
-        self.update()
-
-    def set_audio_level(self, level: float) -> None:
-        self._level = min(max(level, 0.0), 1.0)
-        self.update()
-
-    def paintEvent(self, event) -> None:
-        super().paintEvent(event)
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QColor(self.COLORS.get(self._state, self.COLORS["idle"])))
-        painter.setPen(QPen(QColor("#111827"), 4))
-        rect = self.rect().adjusted(3, 3, -3, -3)
-        painter.drawEllipse(rect)
-        if self._state in {"listening", "success"}:
-            self._draw_waveform(painter)
-
-    def _draw_waveform(self, painter: QPainter) -> None:
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#111827"))
-        center_x = self.width() // 2
-        base_y = 63
-        bar_width = 5
-        gap = 4
-        levels = [0.45, 0.75, 1.0, 0.75, 0.45]
-        for index, factor in enumerate(levels):
-            height = 6 + int(self._level * 24 * factor)
-            x = center_x - 2 * (bar_width + gap) + index * (bar_width + gap)
-            y = base_y - height // 2
-            painter.drawRoundedRect(x, y, bar_width, height, 2, 2)
-
-    def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_start = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            self._dragging = False
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event) -> None:
-        if event.buttons() & Qt.MouseButton.LeftButton and self._drag_start is not None:
-            self._dragging = True
-            self.move(event.globalPosition().toPoint() - self._drag_start)
-            self.moved.emit()
-            event.accept()
-            return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and not self._dragging:
-            self._drag_start = None
-            self._click_timer.start(180)
-            event.accept()
-            return
-        self._drag_start = None
-        self._dragging = False
-        super().mouseReleaseEvent(event)
-
-    def contextMenuEvent(self, event) -> None:
-        menu = QMenu(self)
-        show_action = menu.addAction("打开面板")
-        record_action = menu.addAction("开始/停止录音")
-        insert_action = menu.addAction("插入预览文本")
-        menu.addSeparator()
-        quit_action = menu.addAction("退出")
-        action = menu.exec(event.globalPos())
-        if action == show_action:
-            self.panel_requested.emit()
-        elif action == record_action:
-            self.toggle_requested.emit()
-        elif action == insert_action:
-            self.insert_requested.emit()
-        elif action == quit_action:
-            self.quit_requested.emit()
-
-
-class CompactInputPanel(QWidget):
-    toggle_requested = Signal()
-    insert_requested = Signal()
-    copy_requested = Signal()
-    translate_requested = Signal()
-    settings_requested = Signal()
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setWindowTitle("语音输入")
-        self.setFixedSize(360, 170)
-        self.setWindowFlags(
-            Qt.WindowType.Tool
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-        )
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(8)
-
-        self.preview_edit = QTextEdit()
-        self.preview_edit.setObjectName("compactPreview")
-        self.preview_edit.setPlaceholderText("识别结果会显示在这里，可编辑后插入。")
-        self.preview_edit.setFixedHeight(92)
-
-        button_layout = QHBoxLayout()
-        self.toggle_button = QPushButton("开始")
-        self.toggle_button.clicked.connect(self.toggle_requested.emit)
-        self.insert_button = QPushButton("插入")
-        self.insert_button.clicked.connect(self.insert_requested.emit)
-        self.copy_button = QPushButton("复制")
-        self.copy_button.clicked.connect(self.copy_requested.emit)
-        self.translate_button = QPushButton("中翻英")
-        self.translate_button.clicked.connect(self.translate_requested.emit)
-        self.settings_button = QPushButton("设置")
-        self.settings_button.clicked.connect(self.settings_requested.emit)
-
-        button_layout.addWidget(self.toggle_button)
-        button_layout.addWidget(self.insert_button)
-        button_layout.addWidget(self.copy_button)
-        button_layout.addWidget(self.translate_button)
-        button_layout.addWidget(self.settings_button)
-
-        layout.addWidget(self.preview_edit)
-        layout.addLayout(button_layout)
-        self._apply_styles()
-
-    def _apply_styles(self) -> None:
-        self.setStyleSheet(
-            """
-            QWidget {
-                background: #ffffff;
-                border: 1px solid #cfd7e3;
-                border-radius: 8px;
-            }
-            QTextEdit#compactPreview {
-                border: 1px solid #d4dbe6;
-                border-radius: 6px;
-                padding: 8px;
-                font-size: 14px;
-                color: #172033;
-                background: #f8fafc;
-            }
-            QPushButton {
-                min-height: 28px;
-                border-radius: 6px;
-                padding: 5px 9px;
-                color: #172033;
-                background: #edf2f7;
-                border: 1px solid #cbd5e1;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background: #e2e8f0;
-            }
-            """
-        )
-
-    def set_text(self, text: str) -> None:
-        if self.preview_edit.toPlainText() == text:
-            return
-        self.preview_edit.setPlainText(text)
-        self.preview_edit.moveCursor(QTextCursor.MoveOperation.End)
-
-    def text(self) -> str:
-        return self.preview_edit.toPlainText()
-
-    def set_recording(self, recording: bool) -> None:
-        self.toggle_button.setText("停止" if recording else "开始")
-
-    def set_translation_label(self, label: str) -> None:
-        self.translate_button.setText(label)
-
-
 class FloatingInputWindow(QMainWindow):
     hotkey_pressed = Signal()
 
@@ -444,51 +156,6 @@ class FloatingInputWindow(QMainWindow):
             api_key=self.settings.api_key,
             api_model=self.settings.api_model,
         )
-
-    @staticmethod
-    def _build_editable_combo(
-        current_value: str,
-        presets: tuple[str, ...],
-        placeholder: str,
-    ) -> QComboBox:
-        combo = QComboBox()
-        combo.setEditable(True)
-        combo.addItems(presets)
-        if current_value and current_value not in presets:
-            combo.addItem(current_value)
-        combo.setCurrentText(current_value)
-        line_edit = combo.lineEdit()
-        if line_edit is not None:
-            line_edit.setPlaceholderText(placeholder)
-        return combo
-
-    @staticmethod
-    def _create_config_hint_label() -> QLabel:
-        label = QLabel("")
-        label.setObjectName("configHintLabel")
-        label.setWordWrap(True)
-        label.setVisible(False)
-        return label
-
-    @staticmethod
-    def _model_match_hint(
-        url: str,
-        model: str,
-        rules: tuple[tuple[str, tuple[str, ...]], ...],
-    ) -> str:
-        normalized_url = url.strip().lower()
-        normalized_model = model.strip()
-        if not normalized_url or not normalized_model:
-            return ""
-
-        for url_marker, allowed_models in rules:
-            if url_marker.lower() not in normalized_url:
-                continue
-            if normalized_model in allowed_models:
-                return ""
-            return f"当前地址通常使用：{', '.join(allowed_models)}"
-
-        return "这是自定义地址，请确认模型名与该服务商接口匹配"
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -562,134 +229,8 @@ class FloatingInputWindow(QMainWindow):
         )
         history_layout.addWidget(self.history_list)
 
-        settings_scroll = QScrollArea()
-        settings_scroll.setWidgetResizable(True)
-        settings_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        settings_page = QWidget()
-        settings_page.setObjectName("settingsPage")
-        settings_scroll.setWidget(settings_page)
-        form = QFormLayout(settings_page)
-        form.setContentsMargins(18, 18, 18, 18)
-        form.setHorizontalSpacing(16)
-        form.setVerticalSpacing(12)
-        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        self.provider_combo = QComboBox()
-        self.provider_combo.addItems(["local", "api", "websocket"])
-        self.provider_combo.setCurrentText(self.settings.asr_provider)
-        self.model_combo = QComboBox()
-        self.model_combo.addItems(["tiny", "base", "small"])
-        if self.settings.model_size not in {"tiny", "base", "small"}:
-            self.model_combo.addItem(self.settings.model_size)
-        self.model_combo.setCurrentText(self.settings.model_size)
-        self.model_path_input = QLineEdit(self.settings.model_path)
-        self.model_path_input.setPlaceholderText("更大模型请填写已下载的本地模型目录")
-        self.language_input = QComboBox()
-        self.language_input.addItems(["zh", "en"])
-        self.language_input.setCurrentText(self.settings.language if self.settings.language in {"zh", "en"} else "zh")
-        self.api_base_url_input = self._build_editable_combo(
-            self.settings.api_base_url,
-            ASR_API_URL_PRESETS,
-            "选择常用 HTTP 识别地址或手动填写",
-        )
-        self.api_key_input = QLineEdit(self.settings.api_key)
-        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key_input.setPlaceholderText("云端 API Key，settings.json 已被忽略")
-        self.api_model_input = self._build_editable_combo(
-            self.settings.api_model,
-            ASR_API_MODEL_PRESETS,
-            "选择常用 HTTP 识别模型或手动填写",
-        )
-        self.api_model_hint = self._create_config_hint_label()
-        self.translation_api_base_url_input = self._build_editable_combo(
-            self.settings.translation_api_base_url,
-            TRANSLATION_API_URL_PRESETS,
-            "选择常用翻译地址或手动填写 OpenAI 兼容地址",
-        )
-        self.translation_api_key_input = QLineEdit(self.settings.translation_api_key)
-        self.translation_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.translation_api_key_input.setPlaceholderText("翻译 API Key，settings.json 已被忽略")
-        self.translation_model_input = self._build_editable_combo(
-            self.settings.translation_model,
-            TRANSLATION_MODEL_PRESETS,
-            "选择常用翻译模型或手动填写模型名",
-        )
-        self.translation_model_hint = self._create_config_hint_label()
-        self.local_beam_size_input = QSpinBox()
-        self.local_beam_size_input.setRange(1, 5)
-        self.local_beam_size_input.setValue(self.settings.local_beam_size)
-        self.local_beam_size_input.setToolTip("数值越小越快，输入法场景建议保持 1")
-        self.websocket_url_input = self._build_editable_combo(
-            self.settings.websocket_url,
-            WEBSOCKET_URL_PRESETS,
-            "选择常用 WebSocket 地址或手动填写",
-        )
-        self.websocket_api_key_input = QLineEdit(self.settings.websocket_api_key)
-        self.websocket_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.websocket_api_key_input.setPlaceholderText("实时识别 API Key，留空则尝试使用 API Key")
-        self.websocket_model_input = self._build_editable_combo(
-            self.settings.websocket_model,
-            WEBSOCKET_MODEL_PRESETS,
-            "选择常用实时识别模型或手动填写",
-        )
-        self.websocket_model_hint = self._create_config_hint_label()
-        self.realtime_chunk_input = QSpinBox()
-        self.realtime_chunk_input.setRange(50, 2000)
-        self.realtime_chunk_input.setSingleStep(50)
-        self.realtime_chunk_input.setValue(self.settings.realtime_chunk_ms)
-        self.websocket_final_wait_input = QSpinBox()
-        self.websocket_final_wait_input.setRange(100, 5000)
-        self.websocket_final_wait_input.setSingleStep(100)
-        self.websocket_final_wait_input.setValue(self.settings.websocket_final_wait_ms)
-        self.websocket_final_wait_input.setToolTip("停止录音后等待最终结果的时间，越短响应越快")
-        self.hotkey_input = QLineEdit(self.settings.hotkey)
-        self.auto_insert_check = QCheckBox()
-        self.auto_insert_check.setChecked(self.settings.auto_insert)
-        self.preview_before_insert_check = QCheckBox()
-        self.preview_before_insert_check.setChecked(self.settings.preview_before_insert)
-        self.postprocess_check = QCheckBox()
-        self.postprocess_check.setChecked(self.settings.postprocess_enabled)
-        self.postprocess_mode_combo = QComboBox()
-        self.postprocess_mode_combo.addItems(["chat", "document", "code"])
-        if self.settings.postprocess_mode not in {"chat", "document", "code"}:
-            self.postprocess_mode_combo.addItem(self.settings.postprocess_mode)
-        self.postprocess_mode_combo.setCurrentText(self.settings.postprocess_mode)
-        self.history_limit_input = QSpinBox()
-        self.history_limit_input.setRange(1, 100)
-        self.history_limit_input.setValue(self.settings.history_limit)
-        self.save_settings_button = QPushButton("保存设置")
-        self.save_settings_button.clicked.connect(self.save_settings)
-        for combo in (self.api_base_url_input, self.api_model_input):
-            combo.currentTextChanged.connect(self._refresh_config_hints)
-        for combo in (self.translation_api_base_url_input, self.translation_model_input):
-            combo.currentTextChanged.connect(self._refresh_config_hints)
-        for combo in (self.websocket_url_input, self.websocket_model_input):
-            combo.currentTextChanged.connect(self._refresh_config_hints)
-        form.addRow("识别模式", self.provider_combo)
-        form.addRow("本地模型大小", self.model_combo)
-        form.addRow("本地模型路径", self.model_path_input)
-        form.addRow("识别语言", self.language_input)
-        form.addRow("API 地址", self.api_base_url_input)
-        form.addRow("API Key", self.api_key_input)
-        form.addRow("API 模型", self.api_model_input)
-        form.addRow("", self.api_model_hint)
-        form.addRow("翻译 API 地址", self.translation_api_base_url_input)
-        form.addRow("翻译 API Key", self.translation_api_key_input)
-        form.addRow("翻译模型", self.translation_model_input)
-        form.addRow("", self.translation_model_hint)
-        form.addRow("本地搜索宽度", self.local_beam_size_input)
-        form.addRow("WebSocket 地址", self.websocket_url_input)
-        form.addRow("WebSocket API Key", self.websocket_api_key_input)
-        form.addRow("WebSocket 模型", self.websocket_model_input)
-        form.addRow("", self.websocket_model_hint)
-        form.addRow("实时音频块(ms)", self.realtime_chunk_input)
-        form.addRow("实时收尾等待(ms)", self.websocket_final_wait_input)
-        form.addRow("全局快捷键", self.hotkey_input)
-        form.addRow("识别后自动插入", self.auto_insert_check)
-        form.addRow("插入前预览确认", self.preview_before_insert_check)
-        form.addRow("规则后处理", self.postprocess_check)
-        form.addRow("文本场景模式", self.postprocess_mode_combo)
-        form.addRow("历史记录条数", self.history_limit_input)
-        form.addRow(self.save_settings_button)
+        self.settings_panel = SettingsPanel(self.settings)
+        self.settings_panel.save_requested.connect(self.save_settings)
 
         diagnostics_page = QWidget()
         diagnostics_form = QFormLayout(diagnostics_page)
@@ -720,13 +261,13 @@ class FloatingInputWindow(QMainWindow):
         tabs.setObjectName("mainTabs")
         tabs.addTab(input_page, "输入")
         tabs.addTab(history_page, "历史")
-        tabs.addTab(settings_scroll, "设置")
+        tabs.addTab(self.settings_panel, "设置")
         tabs.addTab(diagnostics_page, "诊断")
         layout.addWidget(tabs)
         self.setCentralWidget(root)
         self._apply_styles()
         self._update_context_badges()
-        self._refresh_config_hints()
+        self.settings_panel.refresh_hints()
         self._refresh_diagnostics()
 
     def _apply_styles(self) -> None:
@@ -923,32 +464,6 @@ class FloatingInputWindow(QMainWindow):
     def _update_compact_translation_button(self) -> None:
         if hasattr(self, "compact_panel"):
             self.compact_panel.set_translation_label(translation_button_label(self.settings.language))
-
-    def _refresh_config_hints(self, *_args: object) -> None:
-        hints = (
-            (
-                self.api_model_hint,
-                self.api_base_url_input.currentText(),
-                self.api_model_input.currentText(),
-                ASR_API_MODEL_RULES,
-            ),
-            (
-                self.translation_model_hint,
-                self.translation_api_base_url_input.currentText(),
-                self.translation_model_input.currentText(),
-                TRANSLATION_MODEL_RULES,
-            ),
-            (
-                self.websocket_model_hint,
-                self.websocket_url_input.currentText(),
-                self.websocket_model_input.currentText(),
-                WEBSOCKET_MODEL_RULES,
-            ),
-        )
-        for label, url, model, rules in hints:
-            hint = self._model_match_hint(url, model, rules)
-            label.setText(hint)
-            label.setVisible(bool(hint))
 
     def _position_compact_panel(self) -> None:
         if not hasattr(self, "compact_panel") or not hasattr(self, "floating_bar"):
@@ -1404,33 +919,9 @@ class FloatingInputWindow(QMainWindow):
 
     def apply_settings_from_form(self, save: bool, restart_hotkey: bool) -> None:
         previous_settings = self.settings
-        self.settings = Settings(
-            asr_provider=self.provider_combo.currentText(),
-            model_size=self.model_combo.currentText(),
-            model_path=self.model_path_input.text().strip(),
-            language=self.language_input.currentText(),
-            api_base_url=self.api_base_url_input.currentText().strip(),
-            api_key=self.api_key_input.text().strip(),
-            api_model=self.api_model_input.currentText().strip(),
-            translation_api_base_url=self.translation_api_base_url_input.currentText().strip(),
-            translation_api_key=self.translation_api_key_input.text().strip(),
-            translation_model=self.translation_model_input.currentText().strip(),
-            local_beam_size=self.local_beam_size_input.value(),
-            websocket_url=self.websocket_url_input.currentText().strip(),
-            websocket_api_key=self.websocket_api_key_input.text().strip(),
-            websocket_model=self.websocket_model_input.currentText().strip(),
-            realtime_chunk_ms=self.realtime_chunk_input.value(),
-            websocket_final_wait_ms=self.websocket_final_wait_input.value(),
-            hotkey=self.hotkey_input.text().strip() or "ctrl+alt+space",
-            auto_insert=self.auto_insert_check.isChecked(),
-            preview_before_insert=self.preview_before_insert_check.isChecked(),
-            postprocess_enabled=self.postprocess_check.isChecked(),
-            postprocess_mode=self.postprocess_mode_combo.currentText(),
-            history_limit=self.history_limit_input.value(),
-            sample_rate=self.settings.sample_rate,
-        )
+        self.settings = self.settings_panel.to_settings(sample_rate=self.settings.sample_rate)
         self._update_context_badges()
-        self._refresh_config_hints()
+        self.settings_panel.refresh_hints()
         if save:
             self.settings_store.save(self.settings)
         if self._engine_settings_changed(previous_settings, self.settings):

@@ -60,20 +60,29 @@ python -m app
 - `api_base_url`：云端 ASR 接口地址，API 模式必填。
 - `api_key`：云端 ASR 密钥，真实配置文件 `config/settings.json` 已被 `.gitignore` 忽略。
 - `api_model`：云端 ASR 模型名，可按服务商要求填写。
+- `translation_api_base_url`：翻译接口地址，使用“中翻英/英翻中”功能时必填。
+- `translation_api_key`：翻译接口密钥，真实配置文件 `config/settings.json` 已被 `.gitignore` 忽略。
+- `translation_model`：翻译模型名。
 - `websocket_url`：WebSocket 实时识别地址，WebSocket 模式必填。
 - `websocket_api_key`：WebSocket 实时识别密钥，适合百炼等与 HTTP API 使用不同密钥的服务；留空时会尝试复用 `api_key`。
 - `websocket_model`：WebSocket 实时识别模型名。
 - `realtime_chunk_ms`：实时音频发送块大小，默认 `200` 毫秒。
+- `websocket_final_wait_ms`：停止实时识别后等待最终结果的时间，默认 `1500` 毫秒。
 - `language`：识别语言，默认 `zh`。
 - `hotkey`：全局快捷键，默认 `ctrl+alt+space`。
 - `auto_insert`：识别完成后是否自动插入到当前输入位置。
+- `preview_before_insert`：自动插入前是否保留预览确认。
+- `postprocess_enabled`：是否启用规则后处理。
+- `postprocess_mode`：文本场景模式，支持 `chat`、`document`、`code`。
+- `local_beam_size`：本地模型搜索宽度，数值越小响应越快，默认 `1`。
 - `history_limit`：历史记录数量。
 
 ## 常用命令
 
 ```powershell
 python -m app
-python -m unittest
+python -m unittest discover -s tests
+python -m ruff check .
 ```
 
 ## 项目结构
@@ -119,7 +128,7 @@ WebSocket 模式会在连接建立后发送一条 JSON 启动消息，然后持�
 当前测试覆盖配置读写、历史记录数量限制和文本整理逻辑：
 
 ```powershell
-python -m unittest
+python -m unittest discover -s tests
 ```
 
 麦克风录音、离线识别和外部应用插入需要在 Windows 桌面环境中手动验证。
