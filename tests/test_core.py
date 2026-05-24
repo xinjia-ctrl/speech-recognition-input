@@ -74,6 +74,15 @@ class CoreTestCase(unittest.TestCase):
         self.assertTrue(loaded.auto_insert)
         self.assertEqual(loaded.history_limit, 3)
 
+    def test_settings_store_reports_existing_config(self) -> None:
+        path = self.tmp_dir / "settings.json"
+        store = SettingsStore(path)
+
+        self.assertFalse(store.exists())
+        store.save(Settings())
+
+        self.assertTrue(store.exists())
+
     def test_settings_round_trip_api_fields(self) -> None:
         path = self.tmp_dir / "settings.json"
         store = SettingsStore(path)

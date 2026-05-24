@@ -56,6 +56,9 @@ class SettingsStore:
         }
         return Settings(**values)
 
+    def exists(self) -> bool:
+        return self.path.exists()
+
     def save(self, settings: Settings) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(

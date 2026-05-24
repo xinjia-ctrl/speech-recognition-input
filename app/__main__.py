@@ -13,12 +13,18 @@ def main() -> int:
 
     from app.config import SettingsStore
     from app.main_window import FloatingInputWindow
+    from app.ui import OnboardingDialog
 
     app = QApplication(sys.argv)
     app.setApplicationName("语音输入器")
     app.setQuitOnLastWindowClosed(False)
 
     settings_store = SettingsStore()
+    if not settings_store.exists():
+        dialog = OnboardingDialog(settings_store.load())
+        if dialog.exec() == dialog.DialogCode.Accepted:
+            settings_store.save(dialog.build_settings())
+
     _window = FloatingInputWindow(settings_store)
 
     return app.exec()
