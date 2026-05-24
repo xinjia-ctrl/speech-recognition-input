@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -17,36 +17,58 @@ from app.config_check import ASR_API_MODEL_RULES, TRANSLATION_MODEL_RULES, WEBSO
 from app.config import Settings
 
 
-ASR_API_URL_PRESETS = (
-    "https://api.openai.com/v1/audio/transcriptions",
-    "https://dashscope.aliyuncs.com/compatible-mode/v1/audio/transcriptions",
+Preset = tuple[str, str]
+
+ASR_API_URL_PRESETS: tuple[Preset, ...] = (
+    ("OpenAI | https://api.openai.com/v1/audio/transcriptions", "https://api.openai.com/v1/audio/transcriptions"),
+    ("硅基流动 | https://api.siliconflow.com/v1/audio/transcriptions", "https://api.siliconflow.com/v1/audio/transcriptions"),
+    ("硅基流动 | https://api.siliconflow.cn/v1/audio/transcriptions", "https://api.siliconflow.cn/v1/audio/transcriptions"),
+    (
+        "百炼 | https://dashscope.aliyuncs.com/compatible-mode/v1/audio/transcriptions",
+        "https://dashscope.aliyuncs.com/compatible-mode/v1/audio/transcriptions",
+    ),
 )
 
-ASR_API_MODEL_PRESETS = (
-    "whisper-1",
-    "paraformer-v2",
+ASR_API_MODEL_PRESETS: tuple[Preset, ...] = (
+    ("OpenAI | whisper-1", "whisper-1"),
+    ("OpenAI | gpt-4o-mini-transcribe", "gpt-4o-mini-transcribe"),
+    ("OpenAI | gpt-4o-transcribe", "gpt-4o-transcribe"),
+    ("硅基流动 | FunAudioLLM/SenseVoiceSmall", "FunAudioLLM/SenseVoiceSmall"),
+    ("百炼 | paraformer-v2", "paraformer-v2"),
 )
 
-TRANSLATION_API_URL_PRESETS = (
-    "https://api.siliconflow.cn/v1/chat/completions",
-    "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+TRANSLATION_API_URL_PRESETS: tuple[Preset, ...] = (
+    ("OpenAI | https://api.openai.com/v1/chat/completions", "https://api.openai.com/v1/chat/completions"),
+    ("硅基流动 | https://api.siliconflow.cn/v1/chat/completions", "https://api.siliconflow.cn/v1/chat/completions"),
+    ("硅基流动 | https://api.siliconflow.com/v1/chat/completions", "https://api.siliconflow.com/v1/chat/completions"),
+    (
+        "百炼 | https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+    ),
+    ("DeepSeek | https://api.deepseek.com/chat/completions", "https://api.deepseek.com/chat/completions"),
+    ("DeepInfra | https://api.deepinfra.com/v1/openai/chat/completions", "https://api.deepinfra.com/v1/openai/chat/completions"),
 )
 
-TRANSLATION_MODEL_PRESETS = (
-    "Qwen/Qwen2.5-7B-Instruct",
-    "Qwen/Qwen2.5-1.5B-Instruct",
-    "Qwen/Qwen2.5-14B-Instruct",
-    "qwen-turbo",
-    "qwen-plus",
+TRANSLATION_MODEL_PRESETS: tuple[Preset, ...] = (
+    ("OpenAI | gpt-4o-mini", "gpt-4o-mini"),
+    ("OpenAI | gpt-4o", "gpt-4o"),
+    ("硅基流动 | Qwen/Qwen2.5-7B-Instruct", "Qwen/Qwen2.5-7B-Instruct"),
+    ("硅基流动 | Qwen/Qwen2.5-1.5B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct"),
+    ("硅基流动 | Qwen/Qwen2.5-14B-Instruct", "Qwen/Qwen2.5-14B-Instruct"),
+    ("百炼 | qwen-turbo", "qwen-turbo"),
+    ("百炼 | qwen-plus", "qwen-plus"),
+    ("DeepSeek | deepseek-chat", "deepseek-chat"),
+    ("DeepSeek | deepseek-reasoner", "deepseek-reasoner"),
+    ("DeepInfra | meta-llama/Meta-Llama-3.1-8B-Instruct", "meta-llama/Meta-Llama-3.1-8B-Instruct"),
 )
 
-WEBSOCKET_URL_PRESETS = (
-    "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
+WEBSOCKET_URL_PRESETS: tuple[Preset, ...] = (
+    ("百炼 | wss://dashscope.aliyuncs.com/api-ws/v1/inference", "wss://dashscope.aliyuncs.com/api-ws/v1/inference"),
 )
 
-WEBSOCKET_MODEL_PRESETS = (
-    "paraformer-realtime-v2",
-    "paraformer-realtime-v1",
+WEBSOCKET_MODEL_PRESETS: tuple[Preset, ...] = (
+    ("百炼 | paraformer-realtime-v2", "paraformer-realtime-v2"),
+    ("百炼 | paraformer-realtime-v1", "paraformer-realtime-v1"),
 )
 
 class SettingsPanel(QScrollArea):
@@ -182,6 +204,7 @@ class SettingsPanel(QScrollArea):
         self.history_limit_input.setValue(settings.history_limit)
 
         self.save_settings_button = QPushButton("保存设置")
+        self.save_settings_button.setObjectName("saveSettingsButton")
         self.save_settings_button.clicked.connect(self.save_requested.emit)
 
         self._connect_hint_refresh()
@@ -194,16 +217,16 @@ class SettingsPanel(QScrollArea):
             model_size=self.model_combo.currentText(),
             model_path=self.model_path_input.text().strip(),
             language=self.language_input.currentText(),
-            api_base_url=self.api_base_url_input.currentText().strip(),
+            api_base_url=self._combo_value(self.api_base_url_input),
             api_key=self.api_key_input.text().strip(),
-            api_model=self.api_model_input.currentText().strip(),
-            translation_api_base_url=self.translation_api_base_url_input.currentText().strip(),
+            api_model=self._combo_value(self.api_model_input),
+            translation_api_base_url=self._combo_value(self.translation_api_base_url_input),
             translation_api_key=self.translation_api_key_input.text().strip(),
-            translation_model=self.translation_model_input.currentText().strip(),
+            translation_model=self._combo_value(self.translation_model_input),
             local_beam_size=self.local_beam_size_input.value(),
-            websocket_url=self.websocket_url_input.currentText().strip(),
+            websocket_url=self._combo_value(self.websocket_url_input),
             websocket_api_key=self.websocket_api_key_input.text().strip(),
-            websocket_model=self.websocket_model_input.currentText().strip(),
+            websocket_model=self._combo_value(self.websocket_model_input),
             realtime_chunk_ms=self.realtime_chunk_input.value(),
             websocket_final_wait_ms=self.websocket_final_wait_input.value(),
             hotkey=self.hotkey_input.text().strip() or "ctrl+alt+space",
@@ -213,9 +236,9 @@ class SettingsPanel(QScrollArea):
             postprocess_mode=self.postprocess_mode_combo.currentText(),
             dictionary_correction_enabled=self.dictionary_correction_check.isChecked(),
             ai_polish_enabled=self.ai_polish_check.isChecked(),
-            ai_polish_api_base_url=self.ai_polish_api_base_url_input.currentText().strip(),
+            ai_polish_api_base_url=self._combo_value(self.ai_polish_api_base_url_input),
             ai_polish_api_key=self.ai_polish_api_key_input.text().strip(),
-            ai_polish_model=self.ai_polish_model_input.currentText().strip(),
+            ai_polish_model=self._combo_value(self.ai_polish_model_input),
             history_limit=self.history_limit_input.value(),
             sample_rate=sample_rate,
         )
@@ -224,20 +247,20 @@ class SettingsPanel(QScrollArea):
         hints = (
             (
                 self.api_model_hint,
-                self.api_base_url_input.currentText(),
-                self.api_model_input.currentText(),
+                self._combo_value(self.api_base_url_input),
+                self._combo_value(self.api_model_input),
                 ASR_API_MODEL_RULES,
             ),
             (
                 self.translation_model_hint,
-                self.translation_api_base_url_input.currentText(),
-                self.translation_model_input.currentText(),
+                self._combo_value(self.translation_api_base_url_input),
+                self._combo_value(self.translation_model_input),
                 TRANSLATION_MODEL_RULES,
             ),
             (
                 self.websocket_model_hint,
-                self.websocket_url_input.currentText(),
-                self.websocket_model_input.currentText(),
+                self._combo_value(self.websocket_url_input),
+                self._combo_value(self.websocket_model_input),
                 WEBSOCKET_MODEL_RULES,
             ),
         )
@@ -290,19 +313,50 @@ class SettingsPanel(QScrollArea):
     @staticmethod
     def _build_editable_combo(
         current_value: str,
-        presets: tuple[str, ...],
+        presets: tuple[Preset, ...],
         placeholder: str,
     ) -> QComboBox:
         combo = QComboBox()
         combo.setEditable(True)
-        combo.addItems(presets)
-        if current_value and current_value not in presets:
-            combo.addItem(current_value)
-        combo.setCurrentText(current_value)
+        current_index = -1
+        for index, (label, value) in enumerate(presets):
+            combo.addItem(label, value)
+            if current_value == value:
+                current_index = index
+        if current_value and current_index < 0:
+            combo.addItem(current_value, current_value)
+            current_index = combo.count() - 1
+        if current_index >= 0:
+            combo.setCurrentIndex(current_index)
+        else:
+            combo.setCurrentText("")
         line_edit = combo.lineEdit()
         if line_edit is not None:
             line_edit.setPlaceholderText(placeholder)
         return combo
+
+    @staticmethod
+    def _combo_value(combo: QComboBox) -> str:
+        current_text = combo.currentText().strip()
+        for index in range(combo.count()):
+            if combo.itemText(index) == current_text:
+                data = combo.itemData(index)
+                if isinstance(data, str):
+                    return data.strip()
+        return current_text
+
+    def mark_saved(self) -> None:
+        self.save_settings_button.setText("已保存")
+        self.save_settings_button.setProperty("saved", True)
+        self.save_settings_button.style().unpolish(self.save_settings_button)
+        self.save_settings_button.style().polish(self.save_settings_button)
+        QTimer.singleShot(1400, self._restore_save_button)
+
+    def _restore_save_button(self) -> None:
+        self.save_settings_button.setText("保存设置")
+        self.save_settings_button.setProperty("saved", False)
+        self.save_settings_button.style().unpolish(self.save_settings_button)
+        self.save_settings_button.style().polish(self.save_settings_button)
 
     @staticmethod
     def _create_config_hint_label() -> QLabel:

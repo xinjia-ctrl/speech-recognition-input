@@ -126,17 +126,17 @@ class OnboardingDialog(QDialog):
             asr_provider=self.provider_combo.currentText(),
             model_size=self.local_model_combo.currentText(),
             language=self.language_combo.currentText(),
-            api_base_url=self.api_url_combo.currentText().strip(),
+            api_base_url=self._combo_value(self.api_url_combo),
             api_key=self.api_key_input.text().strip(),
-            api_model=self.api_model_combo.currentText().strip(),
-            websocket_url=self.websocket_url_combo.currentText().strip(),
+            api_model=self._combo_value(self.api_model_combo),
+            websocket_url=self._combo_value(self.websocket_url_combo),
             websocket_api_key=self.websocket_key_input.text().strip(),
-            websocket_model=self.websocket_model_combo.currentText().strip(),
+            websocket_model=self._combo_value(self.websocket_model_combo),
             preview_before_insert=self.preview_check.isChecked(),
             dictionary_correction_enabled=self.dictionary_check.isChecked(),
-            translation_api_base_url=self.translation_url_combo.currentText().strip() if translation_enabled else "",
+            translation_api_base_url=self._combo_value(self.translation_url_combo) if translation_enabled else "",
             translation_api_key=self.translation_key_input.text().strip() if translation_enabled else "",
-            translation_model=self.translation_model_combo.currentText().strip() if translation_enabled else "",
+            translation_model=self._combo_value(self.translation_model_combo) if translation_enabled else "",
         )
 
     def _basic_form(self) -> QFormLayout:
@@ -194,14 +194,32 @@ class OnboardingDialog(QDialog):
         return form
 
     @staticmethod
-    def _editable_combo(current_value: str, presets: tuple[str, ...]) -> QComboBox:
+    def _editable_combo(current_value: str, presets: tuple[tuple[str, str], ...]) -> QComboBox:
         combo = QComboBox()
         combo.setEditable(True)
-        combo.addItems(presets)
-        if current_value and current_value not in presets:
-            combo.addItem(current_value)
-        combo.setCurrentText(current_value)
+        current_index = -1
+        for index, (label, value) in enumerate(presets):
+            combo.addItem(label, value)
+            if current_value == value:
+                current_index = index
+        if current_value and current_index < 0:
+            combo.addItem(current_value, current_value)
+            current_index = combo.count() - 1
+        if current_index >= 0:
+            combo.setCurrentIndex(current_index)
+        else:
+            combo.setCurrentText("")
         return combo
+
+    @staticmethod
+    def _combo_value(combo: QComboBox) -> str:
+        current_text = combo.currentText().strip()
+        for index in range(combo.count()):
+            if combo.itemText(index) == current_text:
+                data = combo.itemData(index)
+                if isinstance(data, str):
+                    return data.strip()
+        return current_text
 
     @staticmethod
     def _password_input(current_value: str, placeholder: str) -> QLineEdit:

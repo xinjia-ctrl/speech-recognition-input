@@ -426,6 +426,21 @@ class FloatingInputWindow(QMainWindow):
             QPushButton#accentButton:hover {
                 background: #0d625b;
             }
+            QPushButton#saveSettingsButton {
+                color: #ffffff;
+                background: #2563eb;
+                border: 1px solid #1d4ed8;
+                border-radius: 7px;
+                padding: 8px 14px;
+            }
+            QPushButton#saveSettingsButton:hover {
+                background: #1d4ed8;
+            }
+            QPushButton#saveSettingsButton[saved="true"] {
+                color: #ffffff;
+                background: #16a34a;
+                border: 1px solid #15803d;
+            }
             QPushButton#secondaryButton {
                 color: #243044;
                 background: #ffffff;
@@ -994,6 +1009,7 @@ class FloatingInputWindow(QMainWindow):
     def save_settings(self) -> None:
         self.apply_settings_from_form(save=True, restart_hotkey=True)
         self._update_context_badges()
+        self.settings_panel.mark_saved()
         self._set_feedback("设置已保存，下一次识别会使用新配置")
         self._set_status("设置已保存")
 

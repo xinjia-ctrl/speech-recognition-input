@@ -7,11 +7,14 @@ from app.config import Settings
 
 
 ASR_API_MODEL_RULES = (
-    ("api.openai.com", ("whisper-1",)),
+    ("api.openai.com", ("whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe")),
+    ("api.siliconflow.com", ("FunAudioLLM/SenseVoiceSmall",)),
+    ("api.siliconflow.cn", ("FunAudioLLM/SenseVoiceSmall",)),
     ("dashscope.aliyuncs.com", ("paraformer-v2",)),
 )
 
 TRANSLATION_MODEL_RULES = (
+    ("api.openai.com", ("gpt-4o-mini", "gpt-4o")),
     (
         "api.siliconflow.cn",
         (
@@ -20,7 +23,17 @@ TRANSLATION_MODEL_RULES = (
             "Qwen/Qwen2.5-14B-Instruct",
         ),
     ),
+    (
+        "api.siliconflow.com",
+        (
+            "Qwen/Qwen2.5-7B-Instruct",
+            "Qwen/Qwen2.5-1.5B-Instruct",
+            "Qwen/Qwen2.5-14B-Instruct",
+        ),
+    ),
     ("dashscope.aliyuncs.com", ("qwen-turbo", "qwen-plus")),
+    ("api.deepseek.com", ("deepseek-chat", "deepseek-reasoner")),
+    ("api.deepinfra.com", ("meta-llama/Meta-Llama-3.1-8B-Instruct",)),
 )
 
 WEBSOCKET_MODEL_RULES = (
