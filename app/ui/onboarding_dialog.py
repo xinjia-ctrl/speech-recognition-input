@@ -10,7 +10,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QStackedWidget,
     QVBoxLayout,
+    QWidget,
 )
 
 from app.config import Settings
@@ -28,22 +30,9 @@ class OnboardingDialog(QDialog):
     def __init__(self, settings: Settings) -> None:
         super().__init__()
         self.settings = settings
-        self.setWindowTitle("语音输入器初始化")
-        self.setMinimumWidth(520)
+        self.setWindowTitle("快速配置")
+        self.setFixedSize(460, 360)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
-
-        title = QLabel("欢迎使用语音输入器")
-        title.setObjectName("onboardingTitle")
-        subtitle = QLabel("先完成基础配置。后续可以在设置页继续调整模型、API 和文本处理。")
-        subtitle.setWordWrap(True)
-
-        form = QFormLayout()
-        form.setHorizontalSpacing(14)
-        form.setVerticalSpacing(10)
 
         self.provider_combo = QComboBox()
         self.provider_combo.addItems(["local", "api", "websocket"])
@@ -59,64 +48,77 @@ class OnboardingDialog(QDialog):
         self.local_model_combo.setCurrentText(local_model)
 
         self.api_url_combo = self._editable_combo(settings.api_base_url, ASR_API_URL_PRESETS)
-        self.api_key_input = QLineEdit(settings.api_key)
-        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key_input.setPlaceholderText("HTTP 识别 API Key")
+        self.api_key_input = self._password_input(settings.api_key, "HTTP 识别 API Key")
         self.api_model_combo = self._editable_combo(settings.api_model, ASR_API_MODEL_PRESETS)
 
         self.websocket_url_combo = self._editable_combo(settings.websocket_url, WEBSOCKET_URL_PRESETS)
-        self.websocket_key_input = QLineEdit(settings.websocket_api_key or settings.api_key)
-        self.websocket_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.websocket_key_input.setPlaceholderText("WebSocket API Key")
+        self.websocket_key_input = self._password_input(
+            settings.websocket_api_key or settings.api_key,
+            "WebSocket API Key",
+        )
         self.websocket_model_combo = self._editable_combo(settings.websocket_model, WEBSOCKET_MODEL_PRESETS)
 
-        self.translation_enabled_check = QCheckBox()
+        self.translation_enabled_check = QCheckBox("启用翻译输入")
         self.translation_enabled_check.setChecked(bool(settings.translation_api_key))
         self.translation_url_combo = self._editable_combo(
             settings.translation_api_base_url,
             TRANSLATION_API_URL_PRESETS,
         )
-        self.translation_key_input = QLineEdit(settings.translation_api_key)
-        self.translation_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.translation_key_input.setPlaceholderText("翻译 API Key")
+        self.translation_key_input = self._password_input(settings.translation_api_key, "翻译 API Key")
         self.translation_model_combo = self._editable_combo(settings.translation_model, TRANSLATION_MODEL_PRESETS)
 
-        self.preview_check = QCheckBox()
+        self.preview_check = QCheckBox("插入前预览确认")
         self.preview_check.setChecked(settings.preview_before_insert)
-        self.dictionary_check = QCheckBox()
+        self.dictionary_check = QCheckBox("启用词典校正")
         self.dictionary_check.setChecked(settings.dictionary_correction_enabled)
 
-        form.addRow("识别模式", self.provider_combo)
-        form.addRow("识别语言", self.language_combo)
-        form.addRow("本地模型", self.local_model_combo)
-        form.addRow("HTTP 识别地址", self.api_url_combo)
-        form.addRow("HTTP API Key", self.api_key_input)
-        form.addRow("HTTP 模型", self.api_model_combo)
-        form.addRow("WebSocket 地址", self.websocket_url_combo)
-        form.addRow("WebSocket API Key", self.websocket_key_input)
-        form.addRow("WebSocket 模型", self.websocket_model_combo)
-        form.addRow("启用翻译输入", self.translation_enabled_check)
-        form.addRow("翻译地址", self.translation_url_combo)
-        form.addRow("翻译 API Key", self.translation_key_input)
-        form.addRow("翻译模型", self.translation_model_combo)
-        form.addRow("插入前预览", self.preview_check)
-        form.addRow("词典校正", self.dictionary_check)
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self._build_page("基础偏好", "先选最常用的识别方式和语言。", self._basic_form()))
+        self.stack.addWidget(
+            self._build_page(
+                "云端识别",
+                "使用 HTTP 或 WebSocket 时填写；本地模式可以直接跳过。",
+                self._asr_form(),
+            )
+        )
+        self.stack.addWidget(self._build_page("增强输入", "翻译、预览和词典校正可以之后再改。", self._enhance_form()))
 
-        button_layout = QHBoxLayout()
+        self.step_label = QLabel()
+        self.step_label.setObjectName("stepLabel")
+        self.back_button = QPushButton("上一步")
+        self.back_button.clicked.connect(self.previous_page)
         self.skip_button = QPushButton("稍后配置")
         self.skip_button.clicked.connect(self.reject)
-        self.save_button = QPushButton("保存并开始")
-        self.save_button.setObjectName("primaryButton")
-        self.save_button.clicked.connect(self.accept)
-        button_layout.addStretch()
-        button_layout.addWidget(self.skip_button)
-        button_layout.addWidget(self.save_button)
+        self.next_button = QPushButton("继续")
+        self.next_button.setObjectName("primaryButton")
+        self.next_button.clicked.connect(self.next_page)
 
-        layout.addWidget(title)
-        layout.addWidget(subtitle)
-        layout.addLayout(form)
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.step_label)
+        button_layout.addStretch()
+        button_layout.addWidget(self.back_button)
+        button_layout.addWidget(self.skip_button)
+        button_layout.addWidget(self.next_button)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 16)
+        layout.setSpacing(12)
+        layout.addWidget(self.stack)
         layout.addLayout(button_layout)
+
         self._apply_styles()
+        self._refresh_navigation()
+
+    def next_page(self) -> None:
+        if self.stack.currentIndex() == self.stack.count() - 1:
+            self.accept()
+            return
+        self.stack.setCurrentIndex(self.stack.currentIndex() + 1)
+        self._refresh_navigation()
+
+    def previous_page(self) -> None:
+        self.stack.setCurrentIndex(max(self.stack.currentIndex() - 1, 0))
+        self._refresh_navigation()
 
     def build_settings(self) -> Settings:
         translation_enabled = self.translation_enabled_check.isChecked()
@@ -137,6 +139,60 @@ class OnboardingDialog(QDialog):
             translation_model=self.translation_model_combo.currentText().strip() if translation_enabled else "",
         )
 
+    def _basic_form(self) -> QFormLayout:
+        form = self._create_form()
+        form.addRow("识别模式", self.provider_combo)
+        form.addRow("识别语言", self.language_combo)
+        form.addRow("本地模型", self.local_model_combo)
+        return form
+
+    def _asr_form(self) -> QFormLayout:
+        form = self._create_form()
+        form.addRow("HTTP 地址", self.api_url_combo)
+        form.addRow("HTTP Key", self.api_key_input)
+        form.addRow("HTTP 模型", self.api_model_combo)
+        form.addRow("实时地址", self.websocket_url_combo)
+        form.addRow("实时 Key", self.websocket_key_input)
+        form.addRow("实时模型", self.websocket_model_combo)
+        return form
+
+    def _enhance_form(self) -> QFormLayout:
+        form = self._create_form()
+        form.addRow("", self.translation_enabled_check)
+        form.addRow("翻译地址", self.translation_url_combo)
+        form.addRow("翻译 Key", self.translation_key_input)
+        form.addRow("翻译模型", self.translation_model_combo)
+        form.addRow("", self.preview_check)
+        form.addRow("", self.dictionary_check)
+        return form
+
+    @staticmethod
+    def _build_page(title_text: str, subtitle_text: str, form: QFormLayout) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        title = QLabel(title_text)
+        title.setObjectName("onboardingTitle")
+        subtitle = QLabel(subtitle_text)
+        subtitle.setObjectName("onboardingSubtitle")
+        subtitle.setWordWrap(True)
+
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+        layout.addLayout(form)
+        layout.addStretch()
+        return page
+
+    @staticmethod
+    def _create_form() -> QFormLayout:
+        form = QFormLayout()
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(10)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        return form
+
     @staticmethod
     def _editable_combo(current_value: str, presets: tuple[str, ...]) -> QComboBox:
         combo = QComboBox()
@@ -146,6 +202,19 @@ class OnboardingDialog(QDialog):
             combo.addItem(current_value)
         combo.setCurrentText(current_value)
         return combo
+
+    @staticmethod
+    def _password_input(current_value: str, placeholder: str) -> QLineEdit:
+        input_box = QLineEdit(current_value)
+        input_box.setEchoMode(QLineEdit.EchoMode.Password)
+        input_box.setPlaceholderText(placeholder)
+        return input_box
+
+    def _refresh_navigation(self) -> None:
+        current = self.stack.currentIndex()
+        self.step_label.setText(f"{current + 1}/{self.stack.count()}")
+        self.back_button.setEnabled(current > 0)
+        self.next_button.setText("保存并开始" if current == self.stack.count() - 1 else "继续")
 
     def _apply_styles(self) -> None:
         self.setStyleSheet(
@@ -158,22 +227,44 @@ class OnboardingDialog(QDialog):
                 font-size: 18px;
                 font-weight: 700;
             }
+            QLabel#onboardingSubtitle,
+            QLabel#stepLabel {
+                color: #5d6675;
+            }
             QLineEdit, QComboBox {
                 min-height: 28px;
                 border: 1px solid #cfd7e3;
                 border-radius: 6px;
                 padding: 4px 7px;
+                background: #ffffff;
+            }
+            QCheckBox {
+                color: #172033;
+                min-height: 24px;
             }
             QPushButton {
-                min-height: 32px;
+                min-height: 30px;
                 border-radius: 7px;
-                padding: 6px 12px;
+                padding: 5px 12px;
+                color: #243044;
+                background: #ffffff;
+                border: 1px solid #cfd7e3;
                 font-weight: 600;
+            }
+            QPushButton:hover {
+                background: #f2f5f9;
+            }
+            QPushButton:disabled {
+                color: #9aa4b5;
+                background: #f4f6f8;
             }
             QPushButton#primaryButton {
                 color: #ffffff;
                 background: #2563eb;
                 border: 1px solid #1d4ed8;
+            }
+            QPushButton#primaryButton:hover {
+                background: #1d4ed8;
             }
             """
         )
