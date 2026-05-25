@@ -95,10 +95,12 @@ python -m ruff check .
 app/
   asr/       离线语音识别封装
   audio/     麦克风录音
+  controllers/ 后台识别、实时识别和翻译 Worker
   input/     全局快捷键、复制和粘贴输入
   config.py  设置读写
   history.py 历史记录仓储抽象与 JSON 实现
   main_window.py 桌面悬浮窗
+  session_state.py 会话诊断状态
 config/
 docs/
 tests/

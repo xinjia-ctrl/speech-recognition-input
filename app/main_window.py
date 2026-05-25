@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import time
-
-from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QAction, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -27,76 +25,16 @@ from app.asr import (
     UnifiedAsrEngine,
     is_no_speech_message,
 )
-from app.audio import Recorder, RecordingError
 from app.config_check import build_config_checks
 from app.config import Settings, SettingsStore
+from app.controllers import RecordingController, RealtimeWebSocketWorker, TranscribeWorker, TranslationWorker
 from app.history import HistoryStore
 from app.input import GlobalHotkey, InputInjector
+from app.session_state import SessionDiagnostics
 from app.text_pipeline import process_text_pipeline
-from app.text_tools import redact_secret, tidy_text
-from app.text_translate import translate_text_with_api, translation_button_label
+from app.text_tools import tidy_text
+from app.text_translate import translation_button_label
 from app.ui import CompactInputPanel, ConfigCheckPanel, FloatingVoiceBall, SettingsPanel
-
-
-class TranscribeWorker(QThread):
-    event = Signal(object)
-    finished = Signal(object)
-
-    def __init__(self, engine: UnifiedAsrEngine, audio_path: str) -> None:
-        super().__init__()
-        self.engine = engine
-        self.audio_path = audio_path
-
-    def run(self) -> None:
-        self.finished.emit(self.engine.transcribe_file(self.audio_path, self.event.emit))
-
-
-class TranslationWorker(QThread):
-    finished = Signal(str)
-    error = Signal(str)
-
-    def __init__(
-        self,
-        text: str,
-        source_language: str,
-        api_base_url: str,
-        api_key: str,
-        model: str,
-    ) -> None:
-        super().__init__()
-        self.text = text
-        self.source_language = source_language
-        self.api_base_url = api_base_url
-        self.api_key = api_key
-        self.model = model
-
-    def run(self) -> None:
-        try:
-            translated = translate_text_with_api(
-                self.text,
-                self.source_language,
-                self.api_base_url,
-                self.api_key,
-                self.model,
-            )
-        except RuntimeError as exc:
-            self.error.emit(str(exc))
-            return
-        self.finished.emit(translated)
-
-
-class RealtimeWebSocketWorker(QThread):
-    event = Signal(object)
-
-    def __init__(self, engine: UnifiedAsrEngine) -> None:
-        super().__init__()
-        self.engine = engine
-
-    def run(self) -> None:
-        self.engine.run_realtime(self.event.emit)
-
-    def stop(self) -> None:
-        self.engine.stop_realtime()
 
 
 class FloatingInputWindow(QMainWindow):
@@ -106,7 +44,7 @@ class FloatingInputWindow(QMainWindow):
         super().__init__()
         self.settings_store = settings_store
         self.settings = settings_store.load()
-        self.recorder = Recorder(sample_rate=self.settings.sample_rate)
+        self.recording_controller = RecordingController(sample_rate=self.settings.sample_rate)
         self.injector = InputInjector()
         self.history = HistoryStore(limit=self.settings.history_limit)
         self.asr_engine = self._build_engine()
@@ -115,11 +53,7 @@ class FloatingInputWindow(QMainWindow):
         self.realtime_worker: RealtimeWebSocketWorker | None = None
         self.realtime_failed = False
         self.preview_text = ""
-        self._diagnostic_started_at: float | None = None
-        self._diagnostic_first_text_at: float | None = None
-        self._diagnostic_stop_at: float | None = None
-        self._diagnostic_finished_at: float | None = None
-        self._diagnostic_last_error = ""
+        self.diagnostics = SessionDiagnostics()
         self._close_tip_shown = False
         self.hotkey_active = False
         self.microphone_available: bool | None = None
@@ -793,46 +727,28 @@ class FloatingInputWindow(QMainWindow):
         return "已配置" if value.strip() else "未配置"
 
     def _mark_diagnostic_start(self) -> None:
-        now = time.perf_counter()
-        self._diagnostic_started_at = now
-        self._diagnostic_first_text_at = None
-        self._diagnostic_stop_at = None
-        self._diagnostic_finished_at = None
-        self._diagnostic_last_error = ""
+        self.diagnostics.start()
         self._refresh_diagnostics()
 
     def _mark_diagnostic_first_text(self) -> None:
-        if self._diagnostic_started_at is not None and self._diagnostic_first_text_at is None:
-            self._diagnostic_first_text_at = time.perf_counter()
-            self._refresh_diagnostics()
+        self.diagnostics.mark_first_text()
+        self._refresh_diagnostics()
 
     def _mark_diagnostic_stop(self) -> None:
-        if self._diagnostic_started_at is not None and self._diagnostic_stop_at is None:
-            self._diagnostic_stop_at = time.perf_counter()
-            self._refresh_diagnostics()
+        self.diagnostics.mark_stop()
+        self._refresh_diagnostics()
 
     def _mark_diagnostic_finish(self) -> None:
-        if self._diagnostic_started_at is not None:
-            self._diagnostic_finished_at = time.perf_counter()
-            self._refresh_diagnostics()
+        self.diagnostics.mark_finish()
+        self._refresh_diagnostics()
 
     def _set_diagnostic_error(self, message: str) -> None:
-        self._diagnostic_last_error = redact_secret(message)
+        self.diagnostics.set_error(message)
         self._refresh_diagnostics()
 
     def _refresh_diagnostics(self) -> None:
         if not hasattr(self, "diagnostic_labels"):
             return
-
-        first_text_latency = None
-        tail_latency = None
-        total_elapsed = None
-        if self._diagnostic_started_at is not None and self._diagnostic_first_text_at is not None:
-            first_text_latency = self._diagnostic_first_text_at - self._diagnostic_started_at
-        if self._diagnostic_stop_at is not None and self._diagnostic_finished_at is not None:
-            tail_latency = self._diagnostic_finished_at - self._diagnostic_stop_at
-        if self._diagnostic_started_at is not None and self._diagnostic_finished_at is not None:
-            total_elapsed = self._diagnostic_finished_at - self._diagnostic_started_at
 
         values = {
             "provider": self._provider_label(),
@@ -843,10 +759,10 @@ class FloatingInputWindow(QMainWindow):
             "websocket_key": self._configured(self.settings.websocket_api_key or self.settings.api_key),
             "websocket_url": self._configured(self.settings.websocket_url),
             "state": self.connection_badge.text() if hasattr(self, "connection_badge") else "-",
-            "first_text_latency": self._format_diagnostic_duration(first_text_latency),
-            "tail_latency": self._format_diagnostic_duration(tail_latency),
-            "total_elapsed": self._format_diagnostic_duration(total_elapsed),
-            "last_error": self._diagnostic_last_error or "无",
+            "first_text_latency": self._format_diagnostic_duration(self.diagnostics.first_text_latency),
+            "tail_latency": self._format_diagnostic_duration(self.diagnostics.tail_latency),
+            "total_elapsed": self._format_diagnostic_duration(self.diagnostics.total_elapsed),
+            "last_error": self.diagnostics.last_error or "无",
         }
         for key, value in values.items():
             self.diagnostic_labels[key].setText(value)
@@ -875,7 +791,7 @@ class FloatingInputWindow(QMainWindow):
             self._set_status("识别中，请稍候")
             return
 
-        if self.recorder.is_recording:
+        if self.recording_controller.is_recording:
             self.stop_recording()
             return
 
@@ -981,10 +897,9 @@ class FloatingInputWindow(QMainWindow):
             self._set_status("待机：本次没有识别到声音")
 
     def start_recording(self) -> None:
-        try:
-            self.recorder.start(on_level=self.on_audio_level)
-        except RecordingError as exc:
-            self._show_error(str(exc))
+        result = self.recording_controller.start(on_level=self.on_audio_level)
+        if not result.ok:
+            self._show_error(result.error)
             return
 
         self._clear_result_text()
@@ -999,11 +914,9 @@ class FloatingInputWindow(QMainWindow):
         self._set_status("录音中：再次点击或按快捷键停止")
 
     def stop_recording(self) -> None:
-        try:
-            audio_path = self.recorder.stop()
-        except RecordingError as exc:
-            message = str(exc)
-            if is_no_speech_message(message):
+        result = self.recording_controller.stop()
+        if not result.ok:
+            if result.is_no_speech:
                 self._show_notice("未识别到声音，请靠近麦克风后再试")
                 self._mark_diagnostic_finish()
                 self._set_record_button_state(recording=False)
@@ -1011,9 +924,9 @@ class FloatingInputWindow(QMainWindow):
                 self._set_connection_state("待机")
                 self._set_status("待机：本次没有识别到声音")
                 return
-            self._set_diagnostic_error(message)
+            self._set_diagnostic_error(result.error)
             self._mark_diagnostic_finish()
-            self._show_error(message)
+            self._show_error(result.error)
             self._set_record_button_state(recording=False)
             self._set_actions_enabled(True)
             self._set_connection_state("错误")
@@ -1027,7 +940,7 @@ class FloatingInputWindow(QMainWindow):
         self._set_floating_bar_state("processing", "处理中", "正在生成文字")
         self._set_feedback("录音已结束，正在生成文字")
         self._set_status(f"识别中：正在使用{self._provider_label()}转写")
-        self.worker = TranscribeWorker(self.asr_engine, audio_path)
+        self.worker = TranscribeWorker(self.asr_engine, result.audio_path)
         self.worker.event.connect(self.on_file_asr_stream_event)
         self.worker.finished.connect(self.on_transcription_finished)
         self.worker.start()

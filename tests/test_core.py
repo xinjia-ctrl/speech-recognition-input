@@ -4,6 +4,7 @@ from pathlib import Path
 
 from app.config_check import build_config_checks, model_match_hint, TRANSLATION_MODEL_RULES
 from app.config import Settings, SettingsStore
+from app.audio import RecordingError
 from app.asr import (
     AsrEngine,
     AsrStreamEvent,
@@ -16,7 +17,9 @@ from app.asr import (
     build_asr_provider,
     is_no_speech_message,
 )
+from app.controllers import RecordingController
 from app.history import HistoryRepository, HistoryStore, JsonHistoryRepository
+from app.session_state import SessionDiagnostics
 from app.text_postprocess import postprocess_text
 from app.text_pipeline import (
     DictionaryCorrectionStage,
@@ -324,6 +327,35 @@ class CoreTestCase(unittest.TestCase):
         repository.clear()
 
         self.assertEqual(repository.list(), [])
+
+    def test_session_diagnostics_tracks_redacted_error_and_durations(self) -> None:
+        diagnostics = SessionDiagnostics()
+
+        diagnostics.start()
+        diagnostics.mark_first_text()
+        diagnostics.mark_stop()
+        diagnostics.mark_finish()
+        diagnostics.set_error("Authorization: Bearer sk-test-secret-token")
+
+        self.assertIsNotNone(diagnostics.first_text_latency)
+        self.assertIsNotNone(diagnostics.tail_latency)
+        self.assertIsNotNone(diagnostics.total_elapsed)
+        self.assertEqual(diagnostics.last_error, "Authorization: ***")
+
+    def test_recording_controller_wraps_no_speech_error(self) -> None:
+        class EmptyRecorder:
+            is_recording = False
+
+            def start(self, on_level=None) -> None:
+                pass
+
+            def stop(self) -> str:
+                raise RecordingError("没有采集到有效音频，请检查麦克风权限")
+
+        result = RecordingController(sample_rate=16000, recorder=EmptyRecorder()).stop()
+
+        self.assertFalse(result.ok)
+        self.assertTrue(result.is_no_speech)
 
 
 if __name__ == "__main__":
