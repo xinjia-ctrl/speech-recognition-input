@@ -27,9 +27,16 @@ from app.asr import (
 )
 from app.config_check import build_config_checks
 from app.config import Settings, SettingsStore
-from app.controllers import RecordingController, RealtimeWebSocketWorker, TranscribeWorker, TranslationWorker
+from app.controllers import (
+    InputController,
+    RecordingController,
+    RealtimeWebSocketWorker,
+    TranscribeWorker,
+    TranslationController,
+    TranslationRequest,
+)
 from app.history import HistoryStore
-from app.input import GlobalHotkey, InputInjector
+from app.input import GlobalHotkey
 from app.session_state import SessionDiagnostics
 from app.text_pipeline import process_text_pipeline
 from app.text_tools import tidy_text
@@ -45,11 +52,13 @@ class FloatingInputWindow(QMainWindow):
         self.settings_store = settings_store
         self.settings = settings_store.load()
         self.recording_controller = RecordingController(sample_rate=self.settings.sample_rate)
-        self.injector = InputInjector()
+        self.input_controller = InputController()
+        self.translation_controller = TranslationController()
+        self.translation_controller.finished.connect(self.on_translation_finished)
+        self.translation_controller.error.connect(self.on_translation_error)
         self.history = HistoryStore(limit=self.settings.history_limit)
         self.asr_engine = self._build_engine()
         self.worker: TranscribeWorker | None = None
-        self.translation_worker: TranslationWorker | None = None
         self.realtime_worker: RealtimeWebSocketWorker | None = None
         self.realtime_failed = False
         self.preview_text = ""
@@ -1024,21 +1033,21 @@ class FloatingInputWindow(QMainWindow):
         if not text:
             self._set_feedback("没有可翻译的文本")
             return
-        if self.translation_worker is not None and self.translation_worker.isRunning():
+        if self.translation_controller.is_running():
             self._set_feedback("正在翻译，请稍候")
             return
 
         self.apply_settings_from_form(save=False, restart_hotkey=False)
-        self.translation_worker = TranslationWorker(
-            text,
-            self.settings.language,
-            self.settings.translation_api_base_url,
-            self.settings.translation_api_key,
-            self.settings.translation_model,
+        request = TranslationRequest(
+            text=text,
+            source_language=self.settings.language,
+            api_base_url=self.settings.translation_api_base_url,
+            api_key=self.settings.translation_api_key,
+            model=self.settings.translation_model,
         )
-        self.translation_worker.finished.connect(self.on_translation_finished)
-        self.translation_worker.error.connect(self.on_translation_error)
-        self.translation_worker.start()
+        if not self.translation_controller.start(request):
+            self._set_feedback("正在翻译，请稍候")
+            return
         self._set_feedback(f"正在{translation_button_label(self.settings.language)}")
         self._set_status("翻译中：正在调用云端翻译模型")
         self._set_floating_bar_state("processing", "翻译中", text)
@@ -1050,48 +1059,44 @@ class FloatingInputWindow(QMainWindow):
         self._set_feedback(f"已完成{translation_button_label(self.settings.language)}")
         self._set_status("完成：翻译结果已生成")
         self._set_floating_bar_state("success", "已翻译", translated, can_insert=True)
-        self.translation_worker = None
 
     @Slot(str)
     def on_translation_error(self, message: str) -> None:
-        self.translation_worker = None
         self._show_error(f"翻译失败：{message}")
         self._set_status("错误：翻译失败")
         self._set_floating_bar_state("error", "翻译失败", message)
 
     @Slot()
     def copy_text(self) -> None:
-        try:
-            self.injector.copy(self._current_result_text())
-            self._set_feedback("已复制到剪贴板")
-            self._set_status("已复制到剪贴板")
-        except RuntimeError as exc:
-            self._show_error(str(exc))
+        result = self.input_controller.copy(self._current_result_text())
+        if not result.ok:
+            self._show_error(result.error)
+            return
+        self._set_feedback(result.message)
+        self._set_status(result.message)
 
     @Slot()
     def paste_text(self) -> None:
-        text = self._current_result_text()
-        try:
-            self.injector.paste(text)
-            self._set_feedback("已插入到当前输入位置")
-            self._set_floating_bar_state("idle", "待机", "已插入")
-            self._set_status("已插入到当前输入位置")
-        except RuntimeError as exc:
-            self._show_error(str(exc))
+        result = self.input_controller.paste(self._current_result_text())
+        if not result.ok:
+            self._show_error(result.error)
+            return
+        self._set_feedback(result.message)
+        self._set_floating_bar_state("idle", "待机", "已插入")
+        self._set_status(result.message)
 
     @Slot()
     def insert_preview_text(self) -> None:
-        text = self._current_result_text().strip() or self.preview_text.strip()
-        if not text:
-            self._set_floating_bar_state("idle", "待机", "没有可插入的预览文本")
+        result = self.input_controller.insert_preview(self._current_result_text(), self.preview_text)
+        if not result.ok:
+            if result.error == "没有可插入的预览文本":
+                self._set_floating_bar_state("idle", "待机", result.error)
+                return
+            self._show_error(result.error)
             return
-        try:
-            self.injector.paste(text)
-            self._set_feedback("预览文本已插入")
-            self._set_status("预览文本已插入到当前输入位置")
-            self._set_floating_bar_state("idle", "待机", "已插入")
-        except RuntimeError as exc:
-            self._show_error(str(exc))
+        self._set_feedback(result.message)
+        self._set_status("预览文本已插入到当前输入位置")
+        self._set_floating_bar_state("idle", "待机", "已插入")
 
     @Slot()
     def save_settings(self) -> None:

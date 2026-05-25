@@ -17,7 +17,7 @@ from app.asr import (
     build_asr_provider,
     is_no_speech_message,
 )
-from app.controllers import RecordingController
+from app.controllers import InputController, RecordingController, TranslationRequest
 from app.history import HistoryRepository, HistoryStore, JsonHistoryRepository
 from app.session_state import SessionDiagnostics
 from app.text_postprocess import postprocess_text
@@ -356,6 +356,35 @@ class CoreTestCase(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertTrue(result.is_no_speech)
+
+    def test_input_controller_inserts_preview_fallback(self) -> None:
+        class FakeInjector:
+            def __init__(self) -> None:
+                self.pasted = ""
+
+            def copy(self, text: str) -> None:
+                pass
+
+            def paste(self, text: str) -> None:
+                self.pasted = text
+
+        injector = FakeInjector()
+        result = InputController(injector=injector).insert_preview("", "预览文本")
+
+        self.assertTrue(result.ok)
+        self.assertEqual(injector.pasted, "预览文本")
+
+    def test_translation_request_groups_translation_inputs(self) -> None:
+        request = TranslationRequest(
+            text="你好",
+            source_language="zh",
+            api_base_url="https://example.com/v1/chat/completions",
+            api_key="test-key",
+            model="qwen-plus",
+        )
+
+        self.assertEqual(request.text, "你好")
+        self.assertEqual(request.source_language, "zh")
 
     def test_base_requirements_exclude_optional_asr_dependencies(self) -> None:
         base_requirements = Path("requirements.txt").read_text(encoding="utf-8")
