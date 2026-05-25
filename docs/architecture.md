@@ -73,7 +73,7 @@ ASR 统一入口是 `UnifiedAsrEngine`，它只依赖 `Settings`，不关心具�
 Provider 约定：
 
 - `LocalWhisperProvider`：本地 faster-whisper 文件识别。
-- `HttpAsrProvider`：HTTP API 一次性文件识别。
+- `HttpAsrProvider`：HTTP API 一次性文件识别。通用服务走 OpenAI 风格文件上传；百炼地址走 Qwen-ASR `chat/completions` 音频 Data URL 协议，并可复用 `websocket_api_key`。
 - `FallbackAsrProvider`：HTTP API 失败时使用同一段音频切换到本地模型。
 - `WebSocketRealtimeProvider`：WebSocket 实时识别。
 

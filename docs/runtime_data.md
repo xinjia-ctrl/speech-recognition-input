@@ -72,6 +72,17 @@
 
 HTTP API 模式适合一次性录完后上传音频识别，不负责边说边出字。
 
+通用 HTTP ASR 使用 OpenAI 风格的 `multipart/form-data` 文件上传协议，适合 OpenAI、硅基流动等兼容 `/v1/audio/transcriptions` 的服务。百炼 HTTP ASR 使用 Qwen-ASR 兼容模式，推荐配置为：
+
+```json
+{
+  "api_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+  "api_model": "qwen3-asr-flash"
+}
+```
+
+如果百炼 HTTP ASR 已配置 `websocket_api_key`，程序会优先复用该 Key 调用百炼接口，避免 HTTP Key 和 WebSocket Key 分开填写时拿错密钥。
+
 如果 `fallback_to_local` 开启，HTTP API 配置错误、网络失败、接口异常或响应中没有可用文本时，应用会使用同一段 WAV 音频自动切换到本地 faster-whisper。WebSocket 实时模式暂不自动降级，因为实时音频当前是边采集边发送，没有额外保存完整音频文件。
 
 ### WebSocket 实时识别配置

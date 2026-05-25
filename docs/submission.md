@@ -32,7 +32,7 @@ XinVoice 是一个面向 Windows 桌面的语音输入法原型。它不接入�
 - Windows 桌面悬浮球和轻量输入框。
 - 全局快捷键启动、停止录音和唤醒悬浮球。
 - 本地 `faster-whisper` 离线中文识别。
-- HTTP API 云端识别，并支持失败后自动本地兜底。
+- HTTP API 云端识别，支持通用文件上传接口和百炼 Qwen-ASR 兼容模式，并支持失败后自动本地兜底。
 - WebSocket 实时识别，支持通用 JSON 协议和百炼 Paraformer 实时协议。
 - 识别结果预览、编辑、复制和模拟粘贴插入。
 - 规则后处理、词典校正、简繁转换和场景化文本整理。
@@ -63,6 +63,7 @@ XinVoice 是一个面向 Windows 桌面的语音输入法原型。它不接入�
 - 桌面悬浮输入交互和主窗口流程编排。
 - 录音状态管理、音量反馈和录音结果封装。
 - 本地、HTTP API、WebSocket 三类 ASR Provider 的统一调用入口。
+- 百炼 Qwen-ASR HTTP 协议适配，包括音频 Data URL 请求和 `chat/completions` 响应文本抽取。
 - HTTP API 失败后的本地识别兜底流程。
 - WebSocket 实时音频分块发送、事件解析和 UI 实时刷新。
 - 文本处理 Pipeline，包括词典校正、规则清洗、简繁转换和场景模式处理。
