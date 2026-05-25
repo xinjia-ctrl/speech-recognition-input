@@ -5,7 +5,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from app.text_tools import redact_secret, tidy_text, to_simplified_chinese
+from app.errors import ConfigurationError, DependencyMissingError, ErrorKind, ExternalServiceError, user_error_message
+from app.text_tools import tidy_text, to_simplified_chinese
 
 
 DEFAULT_CORRECTIONS = {
@@ -201,14 +202,14 @@ def polish_text_with_api(
     timeout_seconds: int = 30,
 ) -> str:
     if not api_base_url:
-        raise RuntimeError("未配置 AI 润色 API 地址")
+        raise ConfigurationError("未配置 AI 润色 API 地址")
     if not api_key:
-        raise RuntimeError("未配置 AI 润色 API Key")
+        raise ConfigurationError("未配置 AI 润色 API Key")
 
     try:
         import requests
     except ImportError as exc:
-        raise RuntimeError("缺少 requests，请先安装云端 API 依赖：pip install -r requirements-cloud.txt") from exc
+        raise DependencyMissingError("requests", "pip install -r requirements-cloud.txt") from exc
 
     payload: dict[str, Any] = {
         "model": model,
@@ -237,10 +238,10 @@ def polish_text_with_api(
         response.raise_for_status()
         polished = _extract_chat_text(response.json())
     except Exception as exc:
-        raise RuntimeError(redact_secret(str(exc))) from exc
+        raise ExternalServiceError(user_error_message(exc), kind=ErrorKind.TRANSLATION) from exc
 
     if not polished:
-        raise RuntimeError("AI 润色 API 响应中没有可用文本")
+        raise ExternalServiceError("AI 润色 API 响应中没有可用文本", kind=ErrorKind.TRANSLATION)
     return tidy_text(polished.strip().strip('"“”'))
 
 

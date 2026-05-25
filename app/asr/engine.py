@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.text_tools import redact_secret, tidy_text, to_simplified_chinese
+from app.errors import ConfigurationError, DependencyMissingError, ErrorKind, ExternalServiceError, user_error_message
+from app.text_tools import tidy_text, to_simplified_chinese
 
 
 @dataclass(slots=True)
@@ -58,9 +59,7 @@ class AsrEngine:
         try:
             from faster_whisper import WhisperModel
         except ImportError as exc:
-            raise RuntimeError(
-                "缺少 faster-whisper，请先安装本地识别依赖：pip install -r requirements-local.txt"
-            ) from exc
+            raise DependencyMissingError("faster-whisper", "pip install -r requirements-local.txt") from exc
 
         model_id = self.model_path or self.model_size
         self._model = WhisperModel(model_id, device="cpu", compute_type=self.compute_type)
@@ -85,11 +84,11 @@ class AsrEngine:
             if self.provider == "api":
                 return self._transcribe_with_api(path, started_at)
             if self.provider != "local":
-                raise RuntimeError(f"不支持的语音识别模式：{self.provider}")
+                raise ConfigurationError(f"不支持的语音识别模式：{self.provider}")
             return self._transcribe_with_local_model(path, started_at, on_partial)
         except Exception as exc:
             elapsed = time.perf_counter() - started_at
-            return TranscriptionResult("", elapsed, self.model_name, redact_secret(str(exc)))
+            return TranscriptionResult("", elapsed, self.model_name, user_error_message(exc))
 
     def _transcribe_with_local_model(
         self,
@@ -119,12 +118,12 @@ class AsrEngine:
 
     def _transcribe_with_api(self, path: Path, started_at: float) -> TranscriptionResult:
         if not self.api_base_url:
-            raise RuntimeError("未配置云端 ASR API 地址")
+            raise ConfigurationError("未配置云端 ASR API 地址")
 
         try:
             import requests
         except ImportError as exc:
-            raise RuntimeError("缺少 requests，请先安装云端 API 依赖：pip install -r requirements-cloud.txt") from exc
+            raise DependencyMissingError("requests", "pip install -r requirements-cloud.txt") from exc
 
         headers = {}
         if self.api_key:
@@ -150,7 +149,7 @@ class AsrEngine:
         payload = response.json()
         text = self._extract_text_from_api_payload(payload)
         if not text:
-            raise RuntimeError("云端 ASR API 响应中没有可用的 text 字段")
+            raise ExternalServiceError("云端 ASR API 响应中没有可用的 text 字段", kind=ErrorKind.ASR)
 
         text = to_simplified_chinese(tidy_text(text))
         elapsed = time.perf_counter() - started_at

@@ -10,9 +10,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from app.errors import ConfigurationError, DependencyMissingError, ErrorKind, ExternalServiceError, user_error_message
 from app.text_tools import (
     filter_text_by_language,
-    redact_secret,
     tidy_text,
     to_simplified_chinese,
 )
@@ -46,14 +46,18 @@ class WebSocketRealtimeAsrClient:
         on_level: Callable[[float], None] | None = None,
     ) -> None:
         if not self.config.websocket_url:
-            on_error("未配置 WebSocket 实时识别地址")
+            on_error(user_error_message(ConfigurationError("未配置 WebSocket 实时识别地址")))
             return
 
         try:
             import sounddevice as sd
             import websocket
-        except ImportError as exc:
-            on_error(f"缺少实时识别依赖，请先安装：pip install -r requirements-websocket.txt；{exc}")
+        except ImportError:
+            on_error(
+                user_error_message(
+                    DependencyMissingError("websocket-client", "pip install -r requirements-websocket.txt")
+                )
+            )
             return
 
         if self._is_dashscope_url(self.config.websocket_url):
@@ -146,7 +150,7 @@ class WebSocketRealtimeAsrClient:
             ws.send(json.dumps({"type": "end"}, ensure_ascii=False))
             time.sleep(min(max(self.config.final_wait_seconds, 0.1), 3.0))
         except Exception as exc:
-            on_error(redact_secret(str(exc)))
+            on_error(user_error_message(exc))
         finally:
             self._stop_event.set()
             if ws is not None:
@@ -197,7 +201,12 @@ class WebSocketRealtimeAsrClient:
                     task_done.set()
                     break
                 if event == "task-failed":
-                    on_error(error or "百炼实时识别任务失败")
+                    on_error(
+                        error
+                        or user_error_message(
+                            ExternalServiceError("百炼实时识别任务失败", kind=ErrorKind.REALTIME_ASR)
+                        )
+                    )
                     task_done.set()
                     break
                 if event != "result-generated" or not text:
@@ -250,7 +259,10 @@ class WebSocketRealtimeAsrClient:
             receiver_thread = threading.Thread(target=receiver, daemon=True)
             receiver_thread.start()
             if not task_started.wait(timeout=10):
-                raise RuntimeError("等待百炼 task-started 超时，请检查 WebSocket 地址、Key 和模型名")
+                raise ExternalServiceError(
+                    "等待百炼 task-started 超时，请检查 WebSocket 地址、Key 和模型名",
+                    kind=ErrorKind.REALTIME_ASR,
+                )
 
             blocksize = max(1, int(self.config.sample_rate * self.config.chunk_ms / 1000))
             with sd.RawInputStream(
@@ -282,7 +294,7 @@ class WebSocketRealtimeAsrClient:
             )
             task_done.wait(timeout=max(self.config.final_wait_seconds, 0.1))
         except Exception as exc:
-            on_error(redact_secret(str(exc)))
+            on_error(user_error_message(exc))
         finally:
             self._stop_event.set()
             if ws is not None:
@@ -329,7 +341,7 @@ class WebSocketRealtimeAsrClient:
         event = header.get("event", "")
         if event == "task-failed":
             error = body.get("message") or body.get("error") or header.get("error_message") or ""
-            return event, "", False, redact_secret(str(error))
+            return event, "", False, user_error_message(str(error))
 
         output = body.get("output") or {}
         sentence = output.get("sentence") or {}

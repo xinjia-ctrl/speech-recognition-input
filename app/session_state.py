@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from app.text_tools import redact_secret
+from app.errors import user_error_message
 
 
 @dataclass(slots=True)
@@ -35,7 +35,7 @@ class SessionDiagnostics:
             self.finished_at = time.perf_counter()
 
     def set_error(self, message: str) -> None:
-        self.last_error = redact_secret(message)
+        self.last_error = user_error_message(message)
 
     @property
     def first_text_latency(self) -> float | None:

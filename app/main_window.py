@@ -35,6 +35,7 @@ from app.controllers import (
     TranslationController,
     TranslationRequest,
 )
+from app.errors import user_error_message
 from app.history import HistoryStore
 from app.input import GlobalHotkey
 from app.session_state import SessionDiagnostics
@@ -1151,9 +1152,10 @@ class FloatingInputWindow(QMainWindow):
             self.history_list.addItem(item.text)
 
     def _show_error(self, message: str) -> None:
-        self._set_diagnostic_error(message)
-        self._set_feedback(message, is_error=True)
-        self._set_floating_bar_state("error", "错误", message)
+        safe_message = user_error_message(message)
+        self._set_diagnostic_error(safe_message)
+        self._set_feedback(safe_message, is_error=True)
+        self._set_floating_bar_state("error", "错误", safe_message)
 
     def _show_notice(self, message: str) -> None:
         self._set_feedback(message)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.errors import user_error_message
 from app.input import InputInjector
 
 
@@ -20,14 +21,14 @@ class InputController:
         try:
             self.injector.copy(text)
         except RuntimeError as exc:
-            return InputActionResult(False, "", str(exc))
+            return InputActionResult(False, "", user_error_message(exc))
         return InputActionResult(True, "已复制到剪贴板")
 
     def paste(self, text: str) -> InputActionResult:
         try:
             self.injector.paste(text)
         except RuntimeError as exc:
-            return InputActionResult(False, "", str(exc))
+            return InputActionResult(False, "", user_error_message(exc))
         return InputActionResult(True, "已插入到当前输入位置")
 
     def insert_preview(self, text: str, fallback: str = "") -> InputActionResult:
@@ -37,5 +38,5 @@ class InputController:
         try:
             self.injector.paste(value)
         except RuntimeError as exc:
-            return InputActionResult(False, "", str(exc))
+            return InputActionResult(False, "", user_error_message(exc))
         return InputActionResult(True, "预览文本已插入")

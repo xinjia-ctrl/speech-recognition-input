@@ -5,9 +5,12 @@ import wave
 from collections.abc import Callable
 from pathlib import Path
 
+from app.errors import AppError, DependencyMissingError, ErrorKind
 
-class RecordingError(RuntimeError):
-    pass
+
+class RecordingError(AppError):
+    def __init__(self, message: str, *, kind: ErrorKind = ErrorKind.AUDIO) -> None:
+        super().__init__(message, kind=kind)
 
 
 class Recorder:
@@ -35,7 +38,7 @@ class Recorder:
         try:
             import sounddevice as sd
         except ImportError as exc:
-            raise RecordingError("缺少 sounddevice，请先安装依赖：pip install -r requirements.txt") from exc
+            raise DependencyMissingError("sounddevice", "pip install -r requirements.txt") from exc
 
         self._chunks = queue.Queue()
 
@@ -78,7 +81,7 @@ class Recorder:
         try:
             import numpy as np
         except ImportError as exc:
-            raise RecordingError("缺少 numpy，请先安装依赖：pip install -r requirements.txt") from exc
+            raise DependencyMissingError("numpy", "pip install -r requirements.txt") from exc
 
         chunks = []
         while not self._chunks.empty():
@@ -87,7 +90,7 @@ class Recorder:
                 chunks.append(item)
 
         if not chunks:
-            raise RecordingError("没有采集到有效音频，请检查麦克风权限")
+            raise RecordingError("没有采集到有效音频，请检查麦克风权限", kind=ErrorKind.NO_SPEECH)
 
         audio = np.concatenate(chunks, axis=0)
         pcm = np.clip(audio, -1.0, 1.0)

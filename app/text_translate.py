@@ -3,7 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.text_tools import redact_secret, tidy_text, to_simplified_chinese
+from app.errors import ConfigurationError, DependencyMissingError, ErrorKind, ExternalServiceError, user_error_message
+from app.text_tools import tidy_text, to_simplified_chinese
 
 
 ZH_TO_EN_PHRASES = {
@@ -45,14 +46,14 @@ def translate_text_with_api(
     timeout_seconds: int = 30,
 ) -> str:
     if not api_base_url:
-        raise RuntimeError("未配置翻译 API 地址")
+        raise ConfigurationError("未配置翻译 API 地址")
     if not api_key:
-        raise RuntimeError("未配置翻译 API Key")
+        raise ConfigurationError("未配置翻译 API Key")
 
     try:
         import requests
     except ImportError as exc:
-        raise RuntimeError("缺少 requests，请先安装云端 API 依赖：pip install -r requirements-cloud.txt") from exc
+        raise DependencyMissingError("requests", "pip install -r requirements-cloud.txt") from exc
 
     target_language = "中文" if source_language == "en" else "英文"
     source_language_label = "英文" if source_language == "en" else "中文"
@@ -86,10 +87,10 @@ def translate_text_with_api(
         response.raise_for_status()
         translated = _extract_translation_text(response.json())
     except Exception as exc:
-        raise RuntimeError(redact_secret(str(exc))) from exc
+        raise ExternalServiceError(user_error_message(exc), kind=ErrorKind.TRANSLATION) from exc
 
     if not translated:
-        raise RuntimeError("翻译 API 响应中没有可用文本")
+        raise ExternalServiceError("翻译 API 响应中没有可用文本", kind=ErrorKind.TRANSLATION)
     return _normalize_translation_result(translated, source_language)
 
 

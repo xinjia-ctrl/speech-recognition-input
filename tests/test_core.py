@@ -18,6 +18,7 @@ from app.asr import (
     is_no_speech_message,
 )
 from app.controllers import InputController, RecordingController, TranslationRequest
+from app.errors import DependencyMissingError, ErrorKind, InputActionError, user_error_message
 from app.history import HistoryRepository, HistoryStore, JsonHistoryRepository
 from app.session_state import SessionDiagnostics
 from app.text_postprocess import postprocess_text
@@ -357,6 +358,13 @@ class CoreTestCase(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(result.is_no_speech)
 
+    def test_typed_error_formats_install_hint_and_redacts_secret(self) -> None:
+        error = DependencyMissingError("requests", "pip install -r requirements-cloud.txt")
+
+        self.assertEqual(error.kind, ErrorKind.DEPENDENCY)
+        self.assertIn("pip install -r requirements-cloud.txt", user_error_message(error))
+        self.assertEqual(user_error_message("Authorization: Bearer sk-test-secret-token"), "Authorization: ***")
+
     def test_input_controller_inserts_preview_fallback(self) -> None:
         class FakeInjector:
             def __init__(self) -> None:
@@ -373,6 +381,19 @@ class CoreTestCase(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertEqual(injector.pasted, "预览文本")
+
+    def test_input_controller_formats_typed_errors(self) -> None:
+        class BrokenInjector:
+            def copy(self, text: str) -> None:
+                raise InputActionError("复制失败：Authorization: Bearer sk-test-secret-token")
+
+            def paste(self, text: str) -> None:
+                raise InputActionError("粘贴失败")
+
+        result = InputController(injector=BrokenInjector()).copy("text")
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "复制失败：Authorization: ***")
 
     def test_translation_request_groups_translation_inputs(self) -> None:
         request = TranslationRequest(

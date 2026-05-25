@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QObject, QThread, Signal
 
+from app.errors import user_error_message
 from app.text_translate import translate_text_with_api
 
 
@@ -44,8 +45,8 @@ class TranslationWorker(QThread):
                 self.api_key,
                 self.model,
             )
-        except RuntimeError as exc:
-            self.error.emit(str(exc))
+        except Exception as exc:
+            self.error.emit(user_error_message(exc))
             return
         self.finished.emit(translated)
 
