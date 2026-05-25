@@ -158,7 +158,7 @@ tests/
 
 ## Demo 视频
 
-[B 站 Demo 视频](https://www.bilibili.com/video/BV1d2Go6HEnu/?pop_share=1&spm_id_from=333.40164.0.0&vd_source=7a2907c97849e6c6c07ed23647d8d8bc)
+[B 站 Demo 视频](https://www.bilibili.com/video/BV1d2Go6HEnu/)
 
 ## 开发说明
 
