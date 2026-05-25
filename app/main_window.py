@@ -166,6 +166,7 @@ class FloatingInputWindow(RecognitionWindowMixin, QMainWindow):
 
     @Slot()
     def on_hotkey_pressed(self) -> None:
+        self._remember_insert_target()
         if hasattr(self, "floating_bar") and not self.floating_bar.isVisible():
             self.floating_bar.show()
             self.floating_bar.raise_()
@@ -297,10 +298,20 @@ class FloatingInputWindow(RecognitionWindowMixin, QMainWindow):
     def show_compact_panel(self) -> None:
         if not hasattr(self, "compact_panel"):
             return
+        self._remember_insert_target()
         self.compact_panel.show()
         self._position_compact_panel()
         self.compact_panel.raise_()
         self.compact_panel.activateWindow()
+
+    def _remember_insert_target(self) -> None:
+        handles = []
+        for widget_name in ("main_panel", "floating_bar", "compact_panel"):
+            widget = getattr(self, widget_name, None)
+            if widget is not None:
+                handles.append(int(widget.winId()))
+        handles.append(int(self.winId()))
+        self.input_controller.remember_target_window(handles)
 
     @Slot()
     def tidy_current_text(self) -> None:

@@ -514,6 +514,7 @@ class CoreTestCase(unittest.TestCase):
         class FakeInjector:
             def __init__(self) -> None:
                 self.pasted = ""
+                self.excluded_handles = []
 
             def copy(self, text: str) -> None:
                 pass
@@ -521,11 +522,17 @@ class CoreTestCase(unittest.TestCase):
             def paste(self, text: str) -> None:
                 self.pasted = text
 
+            def remember_target_window(self, excluded_handles=()) -> None:
+                self.excluded_handles = list(excluded_handles)
+
         injector = FakeInjector()
-        result = InputController(injector=injector).insert_preview("", "预览文本")
+        controller = InputController(injector=injector)
+        controller.remember_target_window([1, 2])
+        result = controller.insert_preview("", "预览文本")
 
         self.assertTrue(result.ok)
         self.assertEqual(injector.pasted, "预览文本")
+        self.assertEqual(injector.excluded_handles, [1, 2])
 
     def test_input_controller_formats_typed_errors(self) -> None:
         class BrokenInjector:

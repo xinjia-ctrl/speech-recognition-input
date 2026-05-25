@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from app.errors import user_error_message
@@ -16,6 +17,11 @@ class InputActionResult:
 class InputController:
     def __init__(self, injector: InputInjector | None = None) -> None:
         self.injector = injector or InputInjector()
+
+    def remember_target_window(self, excluded_handles: Iterable[int] = ()) -> None:
+        remember = getattr(self.injector, "remember_target_window", None)
+        if remember is not None:
+            remember(excluded_handles)
 
     def copy(self, text: str) -> InputActionResult:
         try:

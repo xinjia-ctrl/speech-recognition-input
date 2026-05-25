@@ -14,6 +14,7 @@ class RecognitionWindowMixin:
 
     @Slot()
     def toggle_recording(self, show_panel: bool = True) -> None:
+        self._remember_insert_target()
         if show_panel:
             self.show_window()
         if self.recognition.is_realtime_running:
