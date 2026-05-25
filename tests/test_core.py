@@ -21,7 +21,6 @@ from app.controllers import InputController, RecordingController, TranslationReq
 from app.errors import DependencyMissingError, ErrorKind, InputActionError, user_error_message
 from app.history import HistoryRepository, HistoryStore, JsonHistoryRepository
 from app.session_state import SessionDiagnostics
-from app.text_postprocess import postprocess_text
 from app.text_pipeline import (
     DictionaryCorrectionStage,
     TextPipelineOptions,
@@ -176,11 +175,11 @@ class CoreTestCase(unittest.TestCase):
 
         self.assertEqual(translation_check.status, "ok")
 
-    def test_postprocess_text_removes_fillers_and_adds_question_mark(self) -> None:
-        self.assertEqual(postprocess_text("呃 这个 能不能 帮我 看一下", "chat"), "能不能 帮我 看一下？")
+    def test_text_pipeline_removes_fillers_and_adds_question_mark(self) -> None:
+        self.assertEqual(process_text_pipeline("呃 这个 能不能 帮我 看一下", "chat"), "能不能 帮我 看一下？")
 
-    def test_postprocess_text_supports_code_mode_replacements(self) -> None:
-        self.assertEqual(postprocess_text("i f 语句", "code"), "if :。")
+    def test_text_pipeline_supports_code_mode_replacements(self) -> None:
+        self.assertEqual(process_text_pipeline("i f 语句", "code"), "if :。")
 
     def test_text_pipeline_applies_dictionary_before_cleanup(self) -> None:
         self.assertEqual(process_text_pipeline("百练 web socket 能不能用", mode="chat"), "百炼 WebSocket 能不能用？")

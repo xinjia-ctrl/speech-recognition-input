@@ -63,6 +63,13 @@ pip install -r requirements-local.txt -r requirements-cloud.txt -r requirements-
 pip install -r requirements-dev.txt
 ```
 
+Windows 打包工具单独安装：
+
+```powershell
+pip install -r requirements-build.txt
+.\scripts\build_windows.ps1
+```
+
 如果系统 PowerShell 禁止激活脚本，可以改用：
 
 ```powershell
@@ -111,6 +118,7 @@ pip install -r requirements-dev.txt
 python -m app
 python -m unittest discover -s tests
 python -m ruff check app tests
+.\scripts\build_windows.ps1
 ```
 
 ## 项目结构
@@ -121,6 +129,7 @@ app/
   audio/     麦克风录音
   controllers/ 后台识别、实时识别和翻译 Worker
   input/     全局快捷键、复制和粘贴输入
+  ui/        悬浮球、输入框、设置页、诊断页和样式
   config.py  设置读写
   history.py 历史记录仓储抽象与 JSON 实现
   main_window.py 桌面悬浮窗
@@ -129,6 +138,8 @@ config/
 docs/
 tests/
 ```
+
+更完整的模块边界和运行流程见 [docs/architecture.md](docs/architecture.md)。
 
 ## 原创功能说明
 
@@ -141,6 +152,8 @@ tests/
 ## 开发说明
 
 比赛要求保持持续交付。建议每个功能点单独提交 commit，PR 描述写清楚变更内容，不要在截止前一次性导入全部代码。
+
+版本号统一维护在 `app/version.py`。Windows 打包和发布流程见 [docs/release.md](docs/release.md)。
 
 ## 安全说明
 

@@ -1,0 +1,4 @@
+-r requirements-local.txt
+-r requirements-cloud.txt
+-r requirements-websocket.txt
+pyinstaller>=6.0

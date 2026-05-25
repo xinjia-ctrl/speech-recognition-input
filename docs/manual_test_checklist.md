@@ -120,6 +120,9 @@
 - [ ] `python -m unittest discover -s tests` 通过。
 - [ ] `python -m ruff check app tests` 通过。
 - [ ] README 已列明第三方依赖和原创功能范围。
+- [ ] `app/version.py` 中的版本号已更新为本次发布版本。
+- [ ] `.\scripts\build_windows.ps1` 可以成功生成 `dist/speech-input/`。
+- [ ] 打包后的 `speech-input.exe` 可以启动并完成核心流程。
 - [ ] Demo 视频覆盖启动、配置、录音、识别、预览、插入、历史、异常提示。
 - [ ] 仓库中没有提交 `config/settings.json`、`data/history.json`、录音文件或 API Key。
 - [ ] Git 提交记录保持持续交付，不是最后一天一次性导入全部代码。

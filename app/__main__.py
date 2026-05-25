@@ -14,9 +14,11 @@ def main() -> int:
     from app.config import SettingsStore
     from app.main_window import FloatingInputWindow
     from app.ui import OnboardingDialog
+    from app.version import __version__
 
     app = QApplication(sys.argv)
     app.setApplicationName("语音输入器")
+    app.setApplicationVersion(__version__)
     app.setQuitOnLastWindowClosed(False)
 
     settings_store = SettingsStore()
