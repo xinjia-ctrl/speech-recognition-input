@@ -36,8 +36,25 @@ class JsonHistoryRepository:
         if not self.path.exists():
             return []
 
-        raw = json.loads(self.path.read_text(encoding="utf-8"))
-        return [HistoryItem(**item) for item in raw if item.get("text")]
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            return []
+        if not isinstance(raw, list):
+            return []
+
+        items: list[HistoryItem] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            created_at = item.get("created_at")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            if not isinstance(created_at, str):
+                created_at = ""
+            items.append(HistoryItem(text=text, created_at=created_at))
+        return items
 
     def add(self, text: str) -> list[HistoryItem]:
         value = text.strip()

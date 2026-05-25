@@ -50,12 +50,21 @@ class SettingsStore:
         if not self.path.exists():
             return Settings()
 
-        raw = json.loads(self.path.read_text(encoding="utf-8"))
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            return Settings()
+        if not isinstance(raw, dict):
+            return Settings()
+
         allowed_fields = {field.name for field in Settings.__dataclass_fields__.values()}
         values: dict[str, Any] = {
             key: value for key, value in raw.items() if key in allowed_fields
         }
-        return Settings(**values)
+        try:
+            return Settings(**values)
+        except TypeError:
+            return Settings()
 
     def exists(self) -> bool:
         return self.path.exists()

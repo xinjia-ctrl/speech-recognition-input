@@ -89,6 +89,24 @@ class CoreTestCase(unittest.TestCase):
 
         self.assertTrue(store.exists())
 
+    def test_settings_store_falls_back_when_json_is_corrupt(self) -> None:
+        path = self.tmp_dir / "settings.json"
+        path.write_text("{bad json", encoding="utf-8")
+        store = SettingsStore(path)
+
+        loaded = store.load()
+
+        self.assertEqual(loaded, Settings())
+
+    def test_settings_store_falls_back_when_json_shape_is_invalid(self) -> None:
+        path = self.tmp_dir / "settings.json"
+        path.write_text('["not", "settings"]', encoding="utf-8")
+        store = SettingsStore(path)
+
+        loaded = store.load()
+
+        self.assertEqual(loaded, Settings())
+
     def test_settings_round_trip_api_fields(self) -> None:
         path = self.tmp_dir / "settings.json"
         store = SettingsStore(path)
@@ -422,6 +440,23 @@ class CoreTestCase(unittest.TestCase):
         repository.clear()
 
         self.assertEqual(repository.list(), [])
+
+    def test_json_history_repository_returns_empty_list_when_json_is_corrupt(self) -> None:
+        path = self.tmp_dir / "history.json"
+        path.write_text("{bad json", encoding="utf-8")
+        repository = JsonHistoryRepository(path)
+
+        self.assertEqual(repository.list(), [])
+
+    def test_json_history_repository_skips_invalid_items(self) -> None:
+        path = self.tmp_dir / "history.json"
+        path.write_text(
+            '[{"text": "有效记录", "created_at": "2026-05-25T12:00:00"}, {"text": ""}, "bad"]',
+            encoding="utf-8",
+        )
+        repository = JsonHistoryRepository(path)
+
+        self.assertEqual([item.text for item in repository.list()], ["有效记录"])
 
     def test_session_diagnostics_tracks_redacted_error_and_durations(self) -> None:
         diagnostics = SessionDiagnostics()
