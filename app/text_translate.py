@@ -52,7 +52,7 @@ def translate_text_with_api(
     try:
         import requests
     except ImportError as exc:
-        raise RuntimeError("缺少 requests，请先安装依赖：pip install -r requirements.txt") from exc
+        raise RuntimeError("缺少 requests，请先安装云端 API 依赖：pip install -r requirements-cloud.txt") from exc
 
     target_language = "中文" if source_language == "en" else "英文"
     source_language_label = "英文" if source_language == "en" else "中文"

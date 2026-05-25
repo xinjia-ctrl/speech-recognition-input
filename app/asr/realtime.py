@@ -53,7 +53,7 @@ class WebSocketRealtimeAsrClient:
             import sounddevice as sd
             import websocket
         except ImportError as exc:
-            on_error(f"缺少实时识别依赖，请先安装：pip install -r requirements.txt；{exc}")
+            on_error(f"缺少实时识别依赖，请先安装：pip install -r requirements-websocket.txt；{exc}")
             return
 
         if self._is_dashscope_url(self.config.websocket_url):

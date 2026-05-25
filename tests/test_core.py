@@ -357,6 +357,13 @@ class CoreTestCase(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(result.is_no_speech)
 
+    def test_base_requirements_exclude_optional_asr_dependencies(self) -> None:
+        base_requirements = Path("requirements.txt").read_text(encoding="utf-8")
+
+        self.assertNotIn("faster-whisper", base_requirements)
+        self.assertNotIn("websocket-client", base_requirements)
+        self.assertNotIn("requests", base_requirements)
+
 
 if __name__ == "__main__":
     unittest.main()

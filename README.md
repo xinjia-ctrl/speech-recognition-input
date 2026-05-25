@@ -34,6 +34,8 @@
 
 ## 安装与启动
 
+基础桌面功能安装：
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -41,10 +43,30 @@ pip install -r requirements.txt
 python -m app
 ```
 
+按识别模式追加安装：
+
+```powershell
+pip install -r requirements-local.txt      # 本地 faster-whisper 识别
+pip install -r requirements-cloud.txt      # HTTP API、翻译、AI 润色
+pip install -r requirements-websocket.txt  # WebSocket 实时识别
+```
+
+比赛评审或完整 Demo 环境可一次性安装全部运行依赖：
+
+```powershell
+pip install -r requirements-local.txt -r requirements-cloud.txt -r requirements-websocket.txt
+```
+
+开发检查工具单独安装：
+
+```powershell
+pip install -r requirements-dev.txt
+```
+
 如果系统 PowerShell 禁止激活脚本，可以改用：
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-local.txt -r requirements-cloud.txt -r requirements-websocket.txt
 .\.venv\Scripts\python.exe -m app
 ```
 
@@ -86,7 +108,7 @@ python -m app
 ```powershell
 python -m app
 python -m unittest discover -s tests
-python -m ruff check .
+python -m ruff check app tests
 ```
 
 ## 项目结构

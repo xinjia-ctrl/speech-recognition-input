@@ -58,7 +58,9 @@ class AsrEngine:
         try:
             from faster_whisper import WhisperModel
         except ImportError as exc:
-            raise RuntimeError("缺少 faster-whisper，请先安装依赖：pip install -r requirements.txt") from exc
+            raise RuntimeError(
+                "缺少 faster-whisper，请先安装本地识别依赖：pip install -r requirements-local.txt"
+            ) from exc
 
         model_id = self.model_path or self.model_size
         self._model = WhisperModel(model_id, device="cpu", compute_type=self.compute_type)
@@ -122,7 +124,7 @@ class AsrEngine:
         try:
             import requests
         except ImportError as exc:
-            raise RuntimeError("缺少 requests，请先安装依赖：pip install -r requirements.txt") from exc
+            raise RuntimeError("缺少 requests，请先安装云端 API 依赖：pip install -r requirements-cloud.txt") from exc
 
         headers = {}
         if self.api_key:

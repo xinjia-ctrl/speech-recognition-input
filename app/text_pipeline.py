@@ -208,7 +208,7 @@ def polish_text_with_api(
     try:
         import requests
     except ImportError as exc:
-        raise RuntimeError("缺少 requests，请先安装依赖：pip install -r requirements.txt") from exc
+        raise RuntimeError("缺少 requests，请先安装云端 API 依赖：pip install -r requirements-cloud.txt") from exc
 
     payload: dict[str, Any] = {
         "model": model,
