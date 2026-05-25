@@ -103,6 +103,8 @@ pip install -r requirements-dev.txt
 
 当前采用轻量 JSON 本地历史存储，数据默认写入 `data/history.json`。代码中通过 `HistoryRepository` 抽象隔离历史记录读写，当前实现为 `JsonHistoryRepository`，后续如需升级 SQLite，只需要新增仓储实现并替换注入点，不需要重写 UI 逻辑。
 
+更完整的运行诊断、配置字段和历史数据结构说明见 [docs/runtime_data.md](docs/runtime_data.md)。
+
 ## 常用命令
 
 ```powershell

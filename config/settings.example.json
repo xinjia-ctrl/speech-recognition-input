@@ -20,6 +20,11 @@
   "preview_before_insert": true,
   "postprocess_enabled": true,
   "postprocess_mode": "chat",
+  "dictionary_correction_enabled": true,
+  "ai_polish_enabled": false,
+  "ai_polish_api_base_url": "",
+  "ai_polish_api_key": "",
+  "ai_polish_model": "",
   "history_limit": 20,
   "sample_rate": 16000
 }
