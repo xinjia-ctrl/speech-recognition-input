@@ -95,7 +95,7 @@ class FloatingInputWindow(RecognitionWindowMixin, QMainWindow):
         self.main_panel.paste_requested.connect(self.paste_text)
         self.main_panel.history_item_selected.connect(self._set_result_text)
         self.main_panel.save_settings_requested.connect(self.save_settings)
-        self.main_panel.refresh_config_checks_requested.connect(self.refresh_config_checks)
+        self.main_panel.refresh_config_checks_requested.connect(self.refresh_config_checks_from_form)
         self.main_panel.refresh_diagnostics_requested.connect(self._refresh_diagnostics)
         self.settings_panel = self.main_panel.settings_panel
         self.config_check_panel = self.main_panel.config_check_panel
@@ -228,6 +228,12 @@ class FloatingInputWindow(RecognitionWindowMixin, QMainWindow):
                 hotkey_available=self.hotkey_active,
             )
         )
+
+    @Slot()
+    def refresh_config_checks_from_form(self) -> None:
+        self.apply_settings_from_form(save=False, restart_hotkey=False)
+        self._set_feedback("配置检查已刷新")
+        self._set_status("配置检查已刷新：已使用当前设置页内容")
 
     @staticmethod
     def _detect_microphone_available() -> bool:
