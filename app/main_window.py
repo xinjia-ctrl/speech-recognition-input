@@ -9,19 +9,12 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
 )
 
-from app.asr import (
-    AsrStreamEvent,
-    TranscriptionResult,
-    UnifiedAsrEngine,
-    is_no_speech_message,
-)
+from app.asr import UnifiedAsrEngine
 from app.config_check import build_config_checks
 from app.config import SettingsStore
 from app.controllers import (
     InputController,
-    RecordingController,
-    RealtimeWebSocketWorker,
-    TranscribeWorker,
+    RecognitionSessionController,
     TranslationController,
     TranslationRequest,
 )
@@ -34,26 +27,25 @@ from app.text_tools import tidy_text
 from app.text_translate import translation_button_label
 from app.ui import CompactInputPanel, FloatingVoiceBall, MainPanel
 from app.ui.styles import MAIN_WINDOW_STYLE
+from app.window_recognition import RecognitionWindowMixin
 from app.window_state import diagnostic_values, engine_settings_changed, language_label, provider_label
 
 
-class FloatingInputWindow(QMainWindow):
+class FloatingInputWindow(RecognitionWindowMixin, QMainWindow):
     hotkey_pressed = Signal()
 
     def __init__(self, settings_store: SettingsStore) -> None:
         super().__init__()
         self.settings_store = settings_store
         self.settings = settings_store.load()
-        self.recording_controller = RecordingController(sample_rate=self.settings.sample_rate)
         self.input_controller = InputController()
         self.translation_controller = TranslationController()
         self.translation_controller.finished.connect(self.on_translation_finished)
         self.translation_controller.error.connect(self.on_translation_error)
         self.history = HistoryStore(limit=self.settings.history_limit)
         self.asr_engine = self._build_engine()
-        self.worker: TranscribeWorker | None = None
-        self.realtime_worker: RealtimeWebSocketWorker | None = None
-        self.realtime_failed = False
+        self.recognition = RecognitionSessionController(self.asr_engine, sample_rate=self.settings.sample_rate)
+        self._connect_recognition_signals()
         self.preview_text = ""
         self.diagnostics = SessionDiagnostics()
         self._close_tip_shown = False
@@ -78,6 +70,22 @@ class FloatingInputWindow(QMainWindow):
 
     def _build_engine(self) -> UnifiedAsrEngine:
         return UnifiedAsrEngine(self.settings)
+
+    def _connect_recognition_signals(self) -> None:
+        self.recognition.audio_level.connect(self.on_audio_level)
+        self.recognition.recording_started.connect(self.on_recording_started)
+        self.recognition.recording_failed.connect(self.on_recording_failed)
+        self.recognition.recording_stopped.connect(self.on_recording_stopped)
+        self.recognition.file_transcription_started.connect(self.on_file_transcription_started)
+        self.recognition.file_partial.connect(self.on_transcription_partial)
+        self.recognition.file_fallback.connect(self.on_file_fallback)
+        self.recognition.file_finished.connect(self.on_transcription_finished)
+        self.recognition.realtime_started.connect(self.on_realtime_started)
+        self.recognition.realtime_stopping.connect(self.on_realtime_stopping)
+        self.recognition.realtime_partial.connect(self.on_realtime_partial)
+        self.recognition.realtime_final.connect(self.on_realtime_final)
+        self.recognition.realtime_error.connect(self.on_realtime_error)
+        self.recognition.realtime_finished.connect(self.on_realtime_finished)
 
     def _build_ui(self) -> None:
         self.main_panel = MainPanel(self.settings)
@@ -286,11 +294,6 @@ class FloatingInputWindow(QMainWindow):
         state = self.main_panel.connection_state() if hasattr(self, "main_panel") else "-"
         self.diagnostics_panel.set_values(diagnostic_values(self.settings, self.diagnostics, state))
 
-    @Slot()
-    def toggle_compact_recording(self) -> None:
-        self.show_compact_panel()
-        self.toggle_recording(show_panel=False)
-
     def show_compact_panel(self) -> None:
         if not hasattr(self, "compact_panel"):
             return
@@ -298,243 +301,6 @@ class FloatingInputWindow(QMainWindow):
         self._position_compact_panel()
         self.compact_panel.raise_()
         self.compact_panel.activateWindow()
-
-    @Slot()
-    def toggle_recording(self, show_panel: bool = True) -> None:
-        if show_panel:
-            self.show_window()
-        if self.realtime_worker is not None and self.realtime_worker.isRunning():
-            self.stop_websocket_realtime()
-            return
-        if self.worker is not None and self.worker.isRunning():
-            self._set_status("识别中，请稍候")
-            return
-
-        if self.recording_controller.is_recording:
-            self.stop_recording()
-            return
-
-        self.apply_settings_from_form(save=False, restart_hotkey=False)
-        if self.settings.asr_provider == "websocket":
-            self.start_websocket_realtime()
-            return
-
-        self.start_recording()
-
-    def start_websocket_realtime(self) -> None:
-        self._clear_result_text()
-        self.preview_text = ""
-        self.realtime_failed = False
-        self._mark_diagnostic_start()
-        self.realtime_worker = RealtimeWebSocketWorker(self.asr_engine)
-        self.realtime_worker.event.connect(self.on_realtime_stream_event)
-        self.realtime_worker.finished.connect(self.on_realtime_finished)
-        self.realtime_worker.start()
-        self._set_record_button_state(recording=True)
-        self._set_actions_enabled(False)
-        self._set_connection_state("连接中")
-        self._set_floating_bar_state("listening", "监听中", "等待你开始说话")
-        self._set_feedback("实时模式已启动，正在等待语音输入")
-        self._set_status("实时识别中：正在通过 WebSocket 边说边出字")
-
-    def stop_websocket_realtime(self) -> None:
-        if self.realtime_worker is not None:
-            self.realtime_worker.stop()
-        self._mark_diagnostic_stop()
-        self._set_record_button_state(recording=False)
-        self._set_connection_state("结束中")
-        self.on_audio_level(0.0)
-        self._set_floating_bar_state("processing", "处理中", "正在结束实时识别")
-        self._set_status("停止录音：正在结束 WebSocket 实时识别")
-
-    @Slot(str)
-    def on_realtime_partial(self, text: str) -> None:
-        self._set_result_text(text)
-        self.preview_text = text
-        self._mark_diagnostic_first_text()
-        self._set_connection_state("识别中")
-        self._set_floating_bar_state("success", "说话中", text)
-        self._set_feedback("正在实时输出识别结果")
-
-    @Slot(str)
-    def on_realtime_final(self, text: str) -> None:
-        self._set_result_text(text)
-        self.preview_text = text
-        self._mark_diagnostic_first_text()
-        self._set_connection_state("完成")
-        self._set_floating_bar_state("success", "说话中", text)
-
-    @Slot(str)
-    def on_realtime_error(self, message: str) -> None:
-        if is_no_speech_message(message):
-            self._show_notice("未识别到声音，请靠近麦克风后再试")
-            self._set_record_button_state(recording=False)
-            self._set_actions_enabled(True)
-            self._set_connection_state("待机")
-            self._set_status("待机：本次没有识别到声音")
-            return
-
-        self.realtime_failed = True
-        self._set_diagnostic_error(message)
-        self._mark_diagnostic_finish()
-        self._show_error(message)
-        self._set_record_button_state(recording=False)
-        self._set_actions_enabled(True)
-        self._set_connection_state("错误")
-        self._set_floating_bar_state("error", "错误", message)
-        self._set_status("错误：WebSocket 实时识别失败")
-
-    @Slot()
-    def on_realtime_finished(self) -> None:
-        if self.realtime_failed:
-            self.realtime_worker = None
-            return
-
-        text = self._postprocess_text(self._current_result_text().strip())
-        if text:
-            self._set_result_text(text)
-        has_text = bool(text)
-        if has_text:
-            self.history.add(text)
-            self._refresh_history()
-            self.preview_text = text
-            if self.settings.auto_insert and not self.settings.preview_before_insert:
-                self.paste_text()
-            else:
-                self._set_floating_bar_state("success", "待确认", text, can_insert=True)
-        else:
-            self._show_notice("未识别到声音，请靠近麦克风后再试")
-        self._set_record_button_state(recording=False)
-        self._set_actions_enabled(True)
-        self._set_connection_state("待机")
-        self.realtime_worker = None
-        self._mark_diagnostic_finish()
-        if has_text:
-            self._set_feedback("实时识别已完成，可以确认插入")
-            self._set_status("完成：WebSocket 实时识别已结束")
-        else:
-            self._set_status("待机：本次没有识别到声音")
-
-    def start_recording(self) -> None:
-        result = self.recording_controller.start(on_level=self.on_audio_level)
-        if not result.ok:
-            self._show_error(result.error)
-            return
-
-        self._clear_result_text()
-        self.preview_text = ""
-        self._mark_diagnostic_start()
-        self._set_record_button_state(recording=True)
-        self._set_actions_enabled(False)
-        self._set_connection_state("录音中")
-        self.on_audio_level(0.0)
-        self._set_floating_bar_state("listening", "监听中", "等待你开始说话")
-        self._set_feedback("正在录音，结束后会自动识别")
-        self._set_status("录音中：再次点击或按快捷键停止")
-
-    def stop_recording(self) -> None:
-        result = self.recording_controller.stop()
-        if not result.ok:
-            if result.is_no_speech:
-                self._show_notice("未识别到声音，请靠近麦克风后再试")
-                self._mark_diagnostic_finish()
-                self._set_record_button_state(recording=False)
-                self._set_actions_enabled(True)
-                self._set_connection_state("待机")
-                self._set_status("待机：本次没有识别到声音")
-                return
-            self._set_diagnostic_error(result.error)
-            self._mark_diagnostic_finish()
-            self._show_error(result.error)
-            self._set_record_button_state(recording=False)
-            self._set_actions_enabled(True)
-            self._set_connection_state("错误")
-            return
-
-        self._mark_diagnostic_stop()
-        self._set_record_button_state(recording=False)
-        self._set_actions_enabled(False)
-        self._set_connection_state("识别中")
-        self.on_audio_level(0.0)
-        self._set_floating_bar_state("processing", "处理中", "正在生成文字")
-        self._set_feedback("录音已结束，正在生成文字")
-        self._set_status(f"识别中：正在使用{self._provider_label()}转写")
-        self.worker = TranscribeWorker(self.asr_engine, result.audio_path)
-        self.worker.event.connect(self.on_file_asr_stream_event)
-        self.worker.finished.connect(self.on_transcription_finished)
-        self.worker.start()
-
-    @Slot(object)
-    def on_file_asr_stream_event(self, event: AsrStreamEvent) -> None:
-        if event.kind == "partial":
-            self.on_transcription_partial(event.text)
-        elif event.kind == "fallback":
-            self._set_feedback(event.error)
-            self._set_status("云端识别失败：正在使用本地模型兜底")
-            self._set_floating_bar_state("processing", "本地兜底", "正在使用本地模型重新识别")
-
-    @Slot(str)
-    def on_transcription_partial(self, text: str) -> None:
-        self._set_result_text(text)
-        self.preview_text = text
-        self._mark_diagnostic_first_text()
-        self._set_floating_bar_state("success", "说话中", text)
-
-    @Slot(object)
-    def on_transcription_finished(self, result: TranscriptionResult) -> None:
-        if result.error:
-            if is_no_speech_message(result.error):
-                self._show_notice("未识别到声音，请靠近麦克风后再试")
-                self._set_actions_enabled(True)
-                self._set_connection_state("待机")
-                self._set_status("待机：本次没有识别到声音")
-                self._mark_diagnostic_finish()
-                return
-            self._set_diagnostic_error(result.error)
-            self._mark_diagnostic_finish()
-            self._show_error(result.error)
-            self._set_actions_enabled(True)
-            self._set_connection_state("错误")
-            self._set_status("错误：识别失败")
-            return
-
-        processed_text = self._postprocess_text(result.text)
-        self._set_result_text(processed_text)
-        self.preview_text = processed_text
-        if processed_text:
-            self._mark_diagnostic_first_text()
-        else:
-            self._show_notice("未识别到声音，请靠近麦克风后再试")
-            self._set_actions_enabled(True)
-            self._set_connection_state("待机")
-            self._set_status(
-                f"完成：{self._provider_label()} {result.model_name}，没有识别到声音"
-            )
-            self._mark_diagnostic_finish()
-            return
-        self.history.add(processed_text)
-        self._refresh_history()
-        self._set_actions_enabled(True)
-        self._set_connection_state("待机")
-        self._set_floating_bar_state("success", "待确认", processed_text, can_insert=bool(processed_text))
-        self._set_feedback("识别完成，可以编辑、复制或插入")
-        self._set_status(
-            f"完成：{self._provider_label()} {result.model_name}，耗时 {result.elapsed_seconds:.1f}s"
-        )
-        self._mark_diagnostic_finish()
-        if self.settings.auto_insert and processed_text and not self.settings.preview_before_insert:
-            self.paste_text()
-
-    @Slot(object)
-    def on_realtime_stream_event(self, event: AsrStreamEvent) -> None:
-        if event.kind == "partial":
-            self.on_realtime_partial(event.text)
-        elif event.kind == "final":
-            self.on_realtime_final(event.text)
-        elif event.kind == "error":
-            self.on_realtime_error(event.error)
-        elif event.kind == "level":
-            self.on_audio_level(event.level)
 
     @Slot()
     def tidy_current_text(self) -> None:
@@ -629,6 +395,7 @@ class FloatingInputWindow(QMainWindow):
             self.settings_store.save(self.settings)
         if engine_settings_changed(previous_settings, self.settings):
             self.asr_engine = self._build_engine()
+            self.recognition.set_engine(self.asr_engine)
         self.history.limit = self.settings.history_limit
         self.refresh_config_checks()
         self._refresh_diagnostics()
@@ -690,8 +457,7 @@ class FloatingInputWindow(QMainWindow):
         event.ignore()
 
     def quit_app(self) -> None:
-        if self.realtime_worker is not None and self.realtime_worker.isRunning():
-            self.realtime_worker.stop()
+        self.recognition.stop_all()
         self.hotkey.stop()
         self.floating_bar.hide()
         if hasattr(self, "compact_panel"):

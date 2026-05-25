@@ -11,7 +11,9 @@
 
 界面层
   app/main_window.py
-    负责窗口编排、信号连接、状态刷新
+    负责窗口编排、信号连接、设置保存、托盘和悬浮入口
+  app/window_recognition.py
+    负责普通识别和实时识别的界面状态编排
   app/ui/
     主面板、悬浮球、轻量输入框、设置页、配置检查、诊断页和样式
   app/window_state.py
@@ -19,7 +21,7 @@
 
 控制层
   app/controllers/
-    录音、识别 Worker、翻译 Worker、复制/粘贴动作封装
+    录音、识别会话、识别 Worker、翻译 Worker、复制/粘贴动作封装
 
 领域能力层
   app/asr/
@@ -49,7 +51,7 @@
 1. 用户点击悬浮球或按快捷键。
 2. `FloatingInputWindow` 调用 `RecordingController.start()` 开始录音。
 3. 再次触发时调用 `RecordingController.stop()` 生成 WAV 文件。
-4. `TranscribeWorker` 在线程中调用 `UnifiedAsrEngine.transcribe_file()`。
+4. `RecognitionSessionController` 启动 `TranscribeWorker`，在线程中调用 `UnifiedAsrEngine.transcribe_file()`。
 5. `UnifiedAsrEngine` 根据设置选择 `LocalWhisperProvider`、`HttpAsrProvider` 或带本地兜底的 `FallbackAsrProvider`。
 6. 识别结果进入 `process_text_pipeline()` 做文本处理。
 7. 主窗口刷新预览、历史记录和诊断信息。
@@ -58,7 +60,7 @@
 ### WebSocket 实时识别
 
 1. 用户选择 WebSocket 模式后点击悬浮球。
-2. `RealtimeWebSocketWorker` 在线程中调用 `UnifiedAsrEngine.run_realtime()`。
+2. `RecognitionSessionController` 启动 `RealtimeWebSocketWorker`，在线程中调用 `UnifiedAsrEngine.run_realtime()`。
 3. `WebSocketRealtimeProvider` 创建 `WebSocketRealtimeAsrClient` 并持续发送音频块。
 4. Worker 通过 `AsrStreamEvent` 把 partial、final、level、error 事件发回主线程。
 5. 主窗口实时刷新预览文本、悬浮球状态和音量反馈。
@@ -97,7 +99,8 @@ UI 层只负责传入配置开关，不直接处理具体规则。
 
 ## 当前工程化原则
 
-- 主窗口只做编排，不直接实现录音、识别、翻译、输入注入的底层细节。
+- 主窗口只做窗口级编排，不直接持有录音、文件识别或实时识别 Worker。
+- 识别会话生命周期由 `RecognitionSessionController` 管理，识别相关界面状态由 `window_recognition.py` 承接。
 - 主面板 UI 由 `MainPanel` 创建和持有，主窗口通过信号连接业务流程。
 - 第三方服务差异收敛在 ASR Provider、翻译模块和文本润色模块。
 - 历史记录通过 Repository 抽象隔离，当前使用 JSON，后续可替换 SQLite。

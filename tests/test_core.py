@@ -19,7 +19,7 @@ from app.asr import (
     build_asr_provider,
     is_no_speech_message,
 )
-from app.controllers import InputController, RecordingController, TranslationRequest
+from app.controllers import InputController, RecognitionSessionController, RecordingController, TranslationRequest
 from app.errors import DependencyMissingError, ErrorKind, InputActionError, user_error_message
 from app.history import HistoryRepository, HistoryStore, JsonHistoryRepository
 from app.session_state import SessionDiagnostics
@@ -335,6 +335,31 @@ class CoreTestCase(unittest.TestCase):
 
         self.assertEqual(event.kind, "partial")
         self.assertEqual(event.text, "你好")
+
+    def test_recognition_session_dispatches_file_events(self) -> None:
+        controller = RecognitionSessionController(UnifiedAsrEngine(Settings()), sample_rate=16000)
+        partials = []
+        fallbacks = []
+
+        controller.file_partial.connect(partials.append)
+        controller.file_fallback.connect(fallbacks.append)
+
+        controller._handle_file_event(AsrStreamEvent("partial", text="你好"))
+        controller._handle_file_event(AsrStreamEvent("fallback", error="云端失败"))
+
+        self.assertEqual(partials, ["你好"])
+        self.assertEqual(fallbacks, ["云端失败"])
+
+    def test_recognition_session_tracks_realtime_error_state(self) -> None:
+        controller = RecognitionSessionController(UnifiedAsrEngine(Settings()), sample_rate=16000)
+        errors = []
+
+        controller.realtime_error.connect(errors.append)
+
+        controller._handle_realtime_event(AsrStreamEvent("error", error="连接失败"))
+
+        self.assertTrue(controller.realtime_failed)
+        self.assertEqual(errors, ["连接失败"])
 
     def test_no_speech_message_detection(self) -> None:
         self.assertTrue(is_no_speech_message("没有采集到有效音频，请检查麦克风权限"))
