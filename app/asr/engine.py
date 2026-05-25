@@ -110,11 +110,13 @@ class AsrEngine:
         for segment in segments:
             pieces.append(segment.text)
             partial_text = to_simplified_chinese(tidy_text("".join(pieces)))
-            if on_partial is not None and partial_text:
+            if on_partial is not None and partial_text and not self._is_prompt_echo(partial_text, self.initial_prompt):
                 on_partial(partial_text)
 
         text = to_simplified_chinese(tidy_text("".join(pieces)))
         elapsed = time.perf_counter() - started_at
+        if self._is_prompt_echo(text, self.initial_prompt):
+            return TranscriptionResult("", elapsed, self.model_name, "没有识别到声音")
         return TranscriptionResult(text, elapsed, self.model_name)
 
     def _transcribe_with_api(self, path: Path, started_at: float) -> TranscriptionResult:
@@ -157,6 +159,8 @@ class AsrEngine:
 
         text = to_simplified_chinese(tidy_text(text))
         elapsed = time.perf_counter() - started_at
+        if self._is_prompt_echo(text, self.initial_prompt):
+            return TranscriptionResult("", elapsed, self.model_name, "没有识别到声音")
         return TranscriptionResult(text, elapsed, self.model_name)
 
     def _transcribe_with_dashscope_qwen_asr(
@@ -217,6 +221,8 @@ class AsrEngine:
 
         text = to_simplified_chinese(tidy_text(text))
         elapsed = time.perf_counter() - started_at
+        if self._is_prompt_echo(text, self.initial_prompt):
+            return TranscriptionResult("", elapsed, self.model_name, "没有识别到声音")
         return TranscriptionResult(text, elapsed, self.model_name)
 
     @staticmethod
@@ -234,6 +240,16 @@ class AsrEngine:
         if normalized.endswith("/compatible-mode/v1"):
             return f"{normalized}/chat/completions"
         return normalized
+
+    @staticmethod
+    def _is_prompt_echo(text: str, prompt: str) -> bool:
+        normalized_text = AsrEngine._normalize_prompt_echo_text(text)
+        normalized_prompt = AsrEngine._normalize_prompt_echo_text(prompt)
+        return bool(normalized_text and normalized_text == normalized_prompt)
+
+    @staticmethod
+    def _normalize_prompt_echo_text(text: str) -> str:
+        return "".join(char.lower() for char in text if char.isalnum() or "\u4e00" <= char <= "\u9fff")
 
     @staticmethod
     def _extract_text_from_api_payload(payload: dict[str, Any]) -> str:

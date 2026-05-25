@@ -382,6 +382,7 @@ class CoreTestCase(unittest.TestCase):
     def test_no_speech_message_detection(self) -> None:
         self.assertTrue(is_no_speech_message("没有采集到有效音频，请检查麦克风权限"))
         self.assertTrue(is_no_speech_message("No speech detected in audio"))
+        self.assertTrue(is_no_speech_message("没有识别到声音"))
         self.assertFalse(is_no_speech_message("WebSocket API Key 无效"))
 
     def test_main_window_errors_are_non_blocking(self) -> None:
@@ -399,6 +400,13 @@ class CoreTestCase(unittest.TestCase):
             AsrEngine._extract_text_from_api_payload({"choices": [{"message": {"content": "你好"}}]}),
             "你好",
         )
+
+    def test_initial_prompt_echo_is_treated_as_no_speech(self) -> None:
+        prompt = "请使用简体中文输出，保留自然的中文标点。"
+
+        self.assertTrue(AsrEngine._is_prompt_echo("请使用简体中文输出，保留自然的中文标点。", prompt))
+        self.assertTrue(AsrEngine._is_prompt_echo("请使用简体中文输出 保留自然的中文标点", prompt))
+        self.assertFalse(AsrEngine._is_prompt_echo("请把这句话写成简体中文。", prompt))
 
     def test_dashscope_qwen_asr_url_normalization(self) -> None:
         self.assertEqual(
