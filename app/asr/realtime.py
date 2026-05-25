@@ -33,10 +33,11 @@ class RealtimeAsrConfig:
 class WebSocketRealtimeAsrClient:
     def __init__(self, config: RealtimeAsrConfig) -> None:
         self.config = config
-        self._stop_event = threading.Event()
+        self._stop_capture_event = threading.Event()
+        self._close_receiver_event = threading.Event()
 
     def stop(self) -> None:
-        self._stop_event.set()
+        self._stop_capture_event.set()
 
     def run(
         self,
@@ -88,7 +89,7 @@ class WebSocketRealtimeAsrClient:
             self._emit_pcm_level(chunk, on_level)
 
         def receiver() -> None:
-            while not self._stop_event.is_set():
+            while not self._close_receiver_event.is_set():
                 try:
                     message = ws.recv()
                 except Exception:
@@ -140,7 +141,7 @@ class WebSocketRealtimeAsrClient:
                 blocksize=blocksize,
                 callback=callback,
             ):
-                while not self._stop_event.is_set():
+                while not self._stop_capture_event.is_set():
                     try:
                         chunk = audio_queue.get(timeout=0.1)
                     except queue.Empty:
@@ -152,7 +153,8 @@ class WebSocketRealtimeAsrClient:
         except Exception as exc:
             on_error(user_error_message(exc))
         finally:
-            self._stop_event.set()
+            self._stop_capture_event.set()
+            self._close_receiver_event.set()
             if ws is not None:
                 try:
                     ws.close()
@@ -186,7 +188,7 @@ class WebSocketRealtimeAsrClient:
             self._emit_pcm_level(chunk, on_level)
 
         def receiver() -> None:
-            while not self._stop_event.is_set():
+            while not self._close_receiver_event.is_set():
                 try:
                     message = ws.recv()
                 except Exception:
@@ -272,7 +274,7 @@ class WebSocketRealtimeAsrClient:
                 blocksize=blocksize,
                 callback=callback,
             ):
-                while not self._stop_event.is_set():
+                while not self._stop_capture_event.is_set():
                     try:
                         chunk = audio_queue.get(timeout=0.1)
                     except queue.Empty:
@@ -296,7 +298,8 @@ class WebSocketRealtimeAsrClient:
         except Exception as exc:
             on_error(user_error_message(exc))
         finally:
-            self._stop_event.set()
+            self._stop_capture_event.set()
+            self._close_receiver_event.set()
             if ws is not None:
                 try:
                     ws.close()

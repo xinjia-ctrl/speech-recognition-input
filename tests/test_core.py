@@ -239,6 +239,14 @@ class CoreTestCase(unittest.TestCase):
         self.assertEqual(settings.websocket_final_wait_ms, 1500)
         self.assertEqual(config.final_wait_seconds, 1.5)
 
+    def test_websocket_stop_keeps_receiver_open_for_final_result(self) -> None:
+        client = WebSocketRealtimeAsrClient(RealtimeAsrConfig(websocket_url="wss://example.com/realtime"))
+
+        client.stop()
+
+        self.assertTrue(client._stop_capture_event.is_set())
+        self.assertFalse(client._close_receiver_event.is_set())
+
     def test_local_beam_size_defaults_to_low_latency(self) -> None:
         settings = Settings()
         engine = AsrEngine(beam_size=settings.local_beam_size)
