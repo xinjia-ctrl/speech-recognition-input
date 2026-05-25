@@ -17,7 +17,7 @@ def main() -> int:
     from app.version import __version__
 
     app = QApplication(sys.argv)
-    app.setApplicationName("语音输入器")
+    app.setApplicationName("XinVoice")
     app.setApplicationVersion(__version__)
     app.setQuitOnLastWindowClosed(False)
 

@@ -31,7 +31,7 @@ class FloatingVoiceBall(QWidget):
         self._click_timer = QTimer(self)
         self._click_timer.setSingleShot(True)
         self._click_timer.timeout.connect(self.toggle_requested.emit)
-        self.setWindowTitle("语音输入器")
+        self.setWindowTitle("XinVoice")
         self.setFixedSize(60, 60)
         self.setToolTip("单击开始/停止录音，右上角关闭，拖动移动，右键打开菜单")
         self.setWindowFlags(

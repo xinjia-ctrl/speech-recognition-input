@@ -42,8 +42,8 @@ pip install -r requirements-build.txt
 
 ```text
 dist/
-  speech-input/
-    speech-input.exe
+  XinVoice/
+    XinVoice.exe
 ```
 
 构建脚本会随包带上 `config/settings.example.json`、`docs/` 和 `app/ui/assets/`，确保首次配置示例、说明文档和界面箭头图标都能正常使用。
@@ -65,7 +65,7 @@ dist/
 - 按 `docs/manual_test_checklist.md` 完成本地、HTTP API、WebSocket、翻译和插入流程验收。
 - 确认 `config/settings.json` 没有进入 Git 暂存区。
 - 确认 `data/`、录音文件、历史记录和 API Key 没有进入发布仓库。
-- 打开 `dist/speech-input/speech-input.exe`，确认首次引导、悬浮按钮和设置页可以正常使用。
+- 打开 `dist/XinVoice/XinVoice.exe`，确认首次引导、悬浮按钮和设置页可以正常使用。
 - 在 README 或 Release 说明里写明第三方依赖、原创功能范围和 Demo 视频链接。
 
 ## 发布包建议
@@ -74,7 +74,7 @@ dist/
 
 - 公开仓库链接。
 - README 中的 Demo 视频链接。
-- `dist/speech-input/` 目录压缩包，供评审快速试用。
+- `dist/XinVoice/` 目录压缩包，供评审快速试用。
 - `docs/manual_test_checklist.md` 的验收结论截图或摘要。
 
 不要发布以下内容：

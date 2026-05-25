@@ -1,6 +1,6 @@
-# 语音输入器
+# XinVoice
 
-一个面向 Windows 桌面的语音输入法原型。用户可以通过悬浮窗或全局快捷键录音，使用本地离线模型、HTTP 云端 API 或 WebSocket 实时识别中文语音，并将结果复制或插入到当前输入位置。
+XinVoice 是一个面向 Windows 桌面的语音输入法原型。用户可以通过悬浮窗或全局快捷键录音，使用本地离线模型、HTTP 云端 API 或 WebSocket 实时识别中文语音，并将结果复制或插入到当前输入位置。
 
 ## 功能特性
 
@@ -134,7 +134,7 @@ app/
   ui/        悬浮球、输入框、设置页、诊断页和样式
   config.py  设置读写
   history.py 历史记录仓储抽象与 JSON 实现
-  main_window.py 桌面悬浮窗
+  main_window.py XinVoice 主窗口
   session_state.py 会话诊断状态
 config/
 docs/

@@ -54,7 +54,7 @@ class FloatingInputWindow(RecognitionWindowMixin, QMainWindow):
         self.hotkey_pressed.connect(self.on_hotkey_pressed)
         self.hotkey = GlobalHotkey(self.settings.hotkey, self.hotkey_pressed.emit)
 
-        self.setWindowTitle("语音输入器")
+        self.setWindowTitle("XinVoice")
         self.setMinimumSize(520, 420)
         self._build_ui()
         self._build_tray()
@@ -448,7 +448,7 @@ class FloatingInputWindow(RecognitionWindowMixin, QMainWindow):
         self.floating_bar.show()
         if not self._close_tip_shown and self.tray.isVisible():
             self.tray.showMessage(
-                "语音输入器仍在运行",
+                "XinVoice 仍在运行",
                 "窗口已隐藏，悬浮球仍可继续控制录音。双击悬浮球或托盘图标可恢复。",
                 QSystemTrayIcon.MessageIcon.Information,
                 3000,

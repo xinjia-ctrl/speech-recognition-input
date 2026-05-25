@@ -1,5 +1,5 @@
 param(
-    [string]$AppName = "speech-input",
+    [string]$AppName = "XinVoice",
     [switch]$OneFile
 )
 
