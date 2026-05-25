@@ -46,6 +46,7 @@
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `asr_provider` | string | `local` | 识别模式，支持 `local`、`api`、`websocket` |
+| `fallback_to_local` | boolean | `true` | HTTP API 失败后是否自动切换到本地 faster-whisper 兜底 |
 | `language` | string | `zh` | 识别语言，目前界面主要面向 `zh` 和 `en` |
 | `hotkey` | string | `ctrl+alt+space` | 全局快捷键 |
 | `auto_insert` | boolean | `false` | 识别完成后是否自动插入到当前窗口 |
@@ -70,6 +71,8 @@
 | `api_model` | string | 空字符串 | HTTP ASR 模型名 |
 
 HTTP API 模式适合一次性录完后上传音频识别，不负责边说边出字。
+
+如果 `fallback_to_local` 开启，HTTP API 配置错误、网络失败、接口异常或响应中没有可用文本时，应用会使用同一段 WAV 音频自动切换到本地 faster-whisper。WebSocket 实时模式暂不自动降级，因为实时音频当前是边采集边发送，没有额外保存完整音频文件。
 
 ### WebSocket 实时识别配置
 

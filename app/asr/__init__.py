@@ -3,6 +3,7 @@ from app.asr.errors import is_no_speech_message
 from app.asr.providers import (
     AsrProvider,
     AsrStreamEvent,
+    FallbackAsrProvider,
     HttpAsrProvider,
     LocalWhisperProvider,
     WebSocketRealtimeProvider,
@@ -15,6 +16,7 @@ __all__ = [
     "AsrProvider",
     "AsrStreamEvent",
     "AsrEngine",
+    "FallbackAsrProvider",
     "HttpAsrProvider",
     "is_no_speech_message",
     "LocalWhisperProvider",

@@ -127,6 +127,8 @@ class SettingsPanel(QScrollArea):
             "选择常用 HTTP 识别模型或手动填写",
         )
         self.api_model_hint = self._create_config_hint_label()
+        self.fallback_to_local_check = QCheckBox()
+        self.fallback_to_local_check.setChecked(settings.fallback_to_local)
 
         self.translation_api_base_url_input = self._build_editable_combo(
             settings.translation_api_base_url,
@@ -227,6 +229,7 @@ class SettingsPanel(QScrollArea):
             api_base_url=self._combo_value(self.api_base_url_input),
             api_key=self.api_key_input.text().strip(),
             api_model=self._combo_value(self.api_model_input),
+            fallback_to_local=self.fallback_to_local_check.isChecked(),
             translation_api_base_url=self._combo_value(self.translation_api_base_url_input),
             translation_api_key=self.translation_api_key_input.text().strip(),
             translation_model=self._combo_value(self.translation_model_input),
@@ -293,6 +296,7 @@ class SettingsPanel(QScrollArea):
         form.addRow("API Key", self.api_key_input)
         form.addRow("API 模型", self.api_model_input)
         form.addRow("", self.api_model_hint)
+        form.addRow("API 失败本地兜底", self.fallback_to_local_check)
         form.addRow("翻译 API 地址", self.translation_api_base_url_input)
         form.addRow("翻译 API Key", self.translation_api_key_input)
         form.addRow("翻译模型", self.translation_model_input)

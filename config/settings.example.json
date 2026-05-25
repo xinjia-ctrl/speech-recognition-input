@@ -6,6 +6,7 @@
   "api_base_url": "",
   "api_key": "",
   "api_model": "",
+  "fallback_to_local": true,
   "local_beam_size": 1,
   "translation_api_base_url": "",
   "translation_api_key": "",

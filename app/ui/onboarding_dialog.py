@@ -50,6 +50,8 @@ class OnboardingDialog(QDialog):
         self.api_url_combo = self._editable_combo(settings.api_base_url, ASR_API_URL_PRESETS)
         self.api_key_input = self._password_input(settings.api_key, "HTTP 识别 API Key")
         self.api_model_combo = self._editable_combo(settings.api_model, ASR_API_MODEL_PRESETS)
+        self.fallback_to_local_check = QCheckBox("HTTP 失败时自动使用本地模型")
+        self.fallback_to_local_check.setChecked(settings.fallback_to_local)
 
         self.websocket_url_combo = self._editable_combo(settings.websocket_url, WEBSOCKET_URL_PRESETS)
         self.websocket_key_input = self._password_input(
@@ -129,6 +131,7 @@ class OnboardingDialog(QDialog):
             api_base_url=self._combo_value(self.api_url_combo),
             api_key=self.api_key_input.text().strip(),
             api_model=self._combo_value(self.api_model_combo),
+            fallback_to_local=self.fallback_to_local_check.isChecked(),
             websocket_url=self._combo_value(self.websocket_url_combo),
             websocket_api_key=self.websocket_key_input.text().strip(),
             websocket_model=self._combo_value(self.websocket_model_combo),
@@ -151,6 +154,7 @@ class OnboardingDialog(QDialog):
         form.addRow("HTTP 地址", self.api_url_combo)
         form.addRow("HTTP Key", self.api_key_input)
         form.addRow("HTTP 模型", self.api_model_combo)
+        form.addRow("", self.fallback_to_local_check)
         form.addRow("实时地址", self.websocket_url_combo)
         form.addRow("实时 Key", self.websocket_key_input)
         form.addRow("实时模型", self.websocket_model_combo)

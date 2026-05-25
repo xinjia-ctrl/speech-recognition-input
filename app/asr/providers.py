@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from app.asr.engine import AsrEngine, TranscriptionResult
+from app.asr.errors import is_no_speech_message
 from app.asr.realtime import RealtimeAsrConfig, WebSocketRealtimeAsrClient
 from app.config import Settings
 
@@ -106,6 +107,54 @@ class HttpAsrProvider(FileAsrProvider):
         )
 
 
+class FallbackAsrProvider(AsrProvider):
+    name = "api_local_fallback"
+    supports_file = True
+
+    def __init__(self, primary: AsrProvider, fallback: AsrProvider) -> None:
+        self.primary = primary
+        self.fallback = fallback
+
+    @property
+    def model_name(self) -> str:
+        return f"{self.primary.model_name} -> {self.fallback.model_name}"
+
+    def transcribe_file(
+        self,
+        audio_path: str,
+        emit: Callable[[AsrStreamEvent], None],
+    ) -> TranscriptionResult:
+        primary_events: list[AsrStreamEvent] = []
+        primary_result = self.primary.transcribe_file(audio_path, primary_events.append)
+        if not primary_result.error or is_no_speech_message(primary_result.error):
+            for event in primary_events:
+                emit(event)
+            return primary_result
+
+        emit(
+            AsrStreamEvent(
+                "fallback",
+                error=f"云端识别失败，正在切换本地模型：{primary_result.error}",
+                result=primary_result,
+            )
+        )
+        fallback_result = self.fallback.transcribe_file(audio_path, emit)
+        elapsed = primary_result.elapsed_seconds + fallback_result.elapsed_seconds
+        model_name = f"{primary_result.model_name} -> {fallback_result.model_name}"
+        if fallback_result.error:
+            return TranscriptionResult(
+                text="",
+                elapsed_seconds=elapsed,
+                model_name=model_name,
+                error=f"云端识别失败：{primary_result.error}；本地兜底失败：{fallback_result.error}",
+            )
+        return TranscriptionResult(
+            text=fallback_result.text,
+            elapsed_seconds=elapsed,
+            model_name=model_name,
+        )
+
+
 class WebSocketRealtimeProvider(AsrProvider):
     name = "websocket"
     supports_realtime = True
@@ -179,7 +228,10 @@ class WebSocketRealtimeProvider(AsrProvider):
 
 def build_asr_provider(settings: Settings) -> AsrProvider:
     if settings.asr_provider == "api":
-        return HttpAsrProvider(settings)
+        api_provider = HttpAsrProvider(settings)
+        if settings.fallback_to_local:
+            return FallbackAsrProvider(api_provider, LocalWhisperProvider(settings))
+        return api_provider
     if settings.asr_provider == "websocket":
         return WebSocketRealtimeProvider(settings)
     return LocalWhisperProvider(settings)

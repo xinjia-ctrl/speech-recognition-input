@@ -118,22 +118,24 @@ def _check_local_model(settings: Settings) -> ConfigCheckItem:
 
 
 def _check_http_asr(settings: Settings) -> ConfigCheckItem:
+    active = settings.asr_provider == "api"
+    fallback_enabled = active and settings.fallback_to_local
     missing = _missing_fields(
         ("地址", settings.api_base_url),
         ("API Key", settings.api_key),
         ("模型", settings.api_model),
     )
-    active = settings.asr_provider == "api"
     if missing:
-        status = "error" if active else "warning"
-        message = "缺少必填项" if active else "未完整配置"
+        status = "warning" if fallback_enabled or not active else "error"
+        message = "缺少云端配置，将使用本地兜底" if fallback_enabled else "缺少必填项" if active else "未完整配置"
         return ConfigCheckItem("http_asr", "HTTP 云端识别", status, message, f"缺少：{', '.join(missing)}")
 
     hint = model_match_hint(settings.api_base_url, settings.api_model, ASR_API_MODEL_RULES)
     if hint:
-        status = "error" if active else "warning"
+        status = "warning" if fallback_enabled or not active else "error"
         return ConfigCheckItem("http_asr", "HTTP 云端识别", status, "地址和模型可能不匹配", hint)
-    return ConfigCheckItem("http_asr", "HTTP 云端识别", "ok", "配置完整", settings.api_model)
+    detail = f"{settings.api_model}，已开启本地兜底" if fallback_enabled else settings.api_model
+    return ConfigCheckItem("http_asr", "HTTP 云端识别", "ok", "配置完整", detail)
 
 
 def _check_websocket(settings: Settings) -> ConfigCheckItem:

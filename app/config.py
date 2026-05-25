@@ -18,6 +18,7 @@ class Settings:
     api_base_url: str = ""
     api_key: str = ""
     api_model: str = ""
+    fallback_to_local: bool = True
     local_beam_size: int = 1
     websocket_url: str = ""
     websocket_api_key: str = ""

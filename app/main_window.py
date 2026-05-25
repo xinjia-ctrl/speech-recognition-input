@@ -1,21 +1,12 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal, Slot
-from PySide6.QtGui import QAction, QTextCursor
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
-    QFrame,
-    QHBoxLayout,
-    QLabel,
-    QListWidget,
     QMainWindow,
     QMenu,
-    QPushButton,
     QSystemTrayIcon,
-    QTabWidget,
-    QTextEdit,
-    QVBoxLayout,
-    QWidget,
 )
 
 from app.asr import (
@@ -25,7 +16,7 @@ from app.asr import (
     is_no_speech_message,
 )
 from app.config_check import build_config_checks
-from app.config import Settings, SettingsStore
+from app.config import SettingsStore
 from app.controllers import (
     InputController,
     RecordingController,
@@ -41,8 +32,9 @@ from app.session_state import SessionDiagnostics
 from app.text_pipeline import process_text_pipeline
 from app.text_tools import tidy_text
 from app.text_translate import translation_button_label
-from app.ui import CompactInputPanel, ConfigCheckPanel, DiagnosticsPanel, FloatingVoiceBall, SettingsPanel
+from app.ui import CompactInputPanel, FloatingVoiceBall, MainPanel
 from app.ui.styles import MAIN_WINDOW_STYLE
+from app.window_state import diagnostic_values, engine_settings_changed, language_label, provider_label
 
 
 class FloatingInputWindow(QMainWindow):
@@ -88,96 +80,19 @@ class FloatingInputWindow(QMainWindow):
         return UnifiedAsrEngine(self.settings)
 
     def _build_ui(self) -> None:
-        root = QWidget()
-        layout = QVBoxLayout(root)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(12)
-
-        self.status_label = QLabel()
-        self.status_label.setObjectName("statusLabel")
-        self.mode_badge = QLabel()
-        self.mode_badge.setObjectName("badge")
-        self.language_badge = QLabel()
-        self.language_badge.setObjectName("badge")
-        self.connection_badge = QLabel("待机")
-        self.connection_badge.setObjectName("badge")
-        self.feedback_label = QLabel()
-        self.feedback_label.setObjectName("feedbackLabel")
-        self.feedback_label.setVisible(False)
-
-        header = QFrame()
-        header.setObjectName("header")
-        header_layout = QVBoxLayout(header)
-        header_layout.setContentsMargins(14, 12, 14, 12)
-        header_layout.setSpacing(8)
-        badge_layout = QHBoxLayout()
-        badge_layout.setSpacing(8)
-        badge_layout.addWidget(self.mode_badge)
-        badge_layout.addWidget(self.language_badge)
-        badge_layout.addWidget(self.connection_badge)
-        badge_layout.addStretch()
-        header_layout.addLayout(badge_layout)
-        header_layout.addWidget(self.status_label)
-        header_layout.addWidget(self.feedback_label)
-
-        self.text_edit = QTextEdit()
-        self.text_edit.setObjectName("resultEdit")
-        self.text_edit.setPlaceholderText("识别结果会显示在这里，也可以手动编辑后复制或插入。")
-
-        self.record_button = QPushButton("开始说话")
-        self.record_button.setObjectName("primaryButton")
-        self.record_button.setToolTip("开始/停止录音")
-        self.record_button.clicked.connect(lambda: self.toggle_recording(show_panel=True))
-        self.tidy_button = QPushButton("整理文本")
-        self.tidy_button.setObjectName("secondaryButton")
-        self.tidy_button.clicked.connect(self.tidy_current_text)
-        self.copy_button = QPushButton("复制")
-        self.copy_button.setObjectName("secondaryButton")
-        self.copy_button.clicked.connect(self.copy_text)
-        self.paste_button = QPushButton("插入")
-        self.paste_button.setObjectName("accentButton")
-        self.paste_button.clicked.connect(self.paste_text)
-
-        button_layout = QHBoxLayout()
-        button_layout.addWidget(self.record_button)
-        button_layout.addWidget(self.tidy_button)
-        button_layout.addWidget(self.copy_button)
-        button_layout.addWidget(self.paste_button)
-
-        input_page = QWidget()
-        input_layout = QVBoxLayout(input_page)
-        input_layout.setContentsMargins(0, 0, 0, 0)
-        input_layout.setSpacing(12)
-        input_layout.addWidget(header)
-        input_layout.addWidget(self.text_edit)
-        input_layout.addLayout(button_layout)
-
-        history_page = QWidget()
-        history_layout = QVBoxLayout(history_page)
-        self.history_list = QListWidget()
-        self.history_list.itemDoubleClicked.connect(
-            lambda item: self._set_result_text(item.text())
-        )
-        history_layout.addWidget(self.history_list)
-
-        self.settings_panel = SettingsPanel(self.settings)
-        self.settings_panel.save_requested.connect(self.save_settings)
-        self.config_check_panel = ConfigCheckPanel()
-        self.config_check_panel.refresh_requested.connect(self.refresh_config_checks)
-
-        self.diagnostics_panel = DiagnosticsPanel()
-        self.diagnostics_panel.refresh_requested.connect(self._refresh_diagnostics)
-
-        tabs = QTabWidget()
-        tabs.setObjectName("mainTabs")
-        tabs.setDocumentMode(True)
-        tabs.addTab(input_page, "输入")
-        tabs.addTab(history_page, "历史")
-        tabs.addTab(self.settings_panel, "设置")
-        tabs.addTab(self.config_check_panel, "检查")
-        tabs.addTab(self.diagnostics_panel, "诊断")
-        layout.addWidget(tabs)
-        self.setCentralWidget(root)
+        self.main_panel = MainPanel(self.settings)
+        self.main_panel.record_requested.connect(lambda: self.toggle_recording(show_panel=True))
+        self.main_panel.tidy_requested.connect(self.tidy_current_text)
+        self.main_panel.copy_requested.connect(self.copy_text)
+        self.main_panel.paste_requested.connect(self.paste_text)
+        self.main_panel.history_item_selected.connect(self._set_result_text)
+        self.main_panel.save_settings_requested.connect(self.save_settings)
+        self.main_panel.refresh_config_checks_requested.connect(self.refresh_config_checks)
+        self.main_panel.refresh_diagnostics_requested.connect(self._refresh_diagnostics)
+        self.settings_panel = self.main_panel.settings_panel
+        self.config_check_panel = self.main_panel.config_check_panel
+        self.diagnostics_panel = self.main_panel.diagnostics_panel
+        self.setCentralWidget(self.main_panel)
         self._apply_styles()
         self._update_context_badges()
         self.settings_panel.refresh_hints()
@@ -258,34 +173,19 @@ class FloatingInputWindow(QMainWindow):
         self._set_status(f"悬浮按钮已隐藏：按 {self.settings.hotkey} 唤醒")
 
     def _set_status(self, text: str) -> None:
-        self.status_label.setText(text)
+        self.main_panel.set_status(text)
         self._refresh_diagnostics()
 
     def _set_feedback(self, text: str, is_error: bool = False) -> None:
-        self.feedback_label.setText(text)
-        self.feedback_label.setVisible(bool(text))
-        if is_error:
-            self.feedback_label.setStyleSheet(
-                "color: #991b1b; background: #fef2f2; border: 1px solid #fecaca;"
-            )
-        else:
-            self.feedback_label.setStyleSheet("")
+        self.main_panel.set_feedback(text, is_error)
 
     def _set_record_button_state(self, recording: bool) -> None:
-        if recording:
-            self.record_button.setText("停止录音")
-            self.record_button.setObjectName("recordingButton")
-        else:
-            self.record_button.setText("开始说话")
-            self.record_button.setObjectName("primaryButton")
-        self.record_button.style().unpolish(self.record_button)
-        self.record_button.style().polish(self.record_button)
+        self.main_panel.set_recording(recording)
         if hasattr(self, "compact_panel"):
             self.compact_panel.set_recording(recording)
 
     def _set_result_text(self, text: str) -> None:
-        self.text_edit.setPlainText(text)
-        self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+        self.main_panel.set_result_text(text)
         if hasattr(self, "compact_panel"):
             self.compact_panel.set_text(text)
 
@@ -295,22 +195,19 @@ class FloatingInputWindow(QMainWindow):
     def _current_result_text(self) -> str:
         if hasattr(self, "compact_panel") and self.compact_panel.isVisible():
             return self.compact_panel.text()
-        return self.text_edit.toPlainText()
+        return self.main_panel.current_result_text()
 
     def _set_actions_enabled(self, enabled: bool) -> None:
-        self.tidy_button.setEnabled(enabled)
-        self.copy_button.setEnabled(enabled)
-        self.paste_button.setEnabled(enabled)
+        self.main_panel.set_actions_enabled(enabled)
 
     def _update_context_badges(self) -> None:
-        if not hasattr(self, "mode_badge"):
+        if not hasattr(self, "main_panel"):
             return
-        self.mode_badge.setText(f"模式：{self._provider_label()}")
-        self.language_badge.setText(f"语言：{self._language_label()}")
+        self.main_panel.set_badges(self._provider_label(), self._language_label())
         self._update_compact_translation_button()
 
     def _set_connection_state(self, text: str) -> None:
-        self.connection_badge.setText(text)
+        self.main_panel.set_connection_state(text)
         self._refresh_diagnostics()
 
     def refresh_config_checks(self) -> None:
@@ -362,16 +259,6 @@ class FloatingInputWindow(QMainWindow):
             ai_model=self.settings.ai_polish_model,
         )
 
-    @staticmethod
-    def _format_diagnostic_duration(seconds: float | None) -> str:
-        if seconds is None:
-            return "-"
-        return f"{seconds * 1000:.0f} ms"
-
-    @staticmethod
-    def _configured(value: str) -> str:
-        return "已配置" if value.strip() else "未配置"
-
     def _mark_diagnostic_start(self) -> None:
         self.diagnostics.start()
         self._refresh_diagnostics()
@@ -396,20 +283,8 @@ class FloatingInputWindow(QMainWindow):
         if not hasattr(self, "diagnostics_panel"):
             return
 
-        self.diagnostics_panel.set_values({
-            "provider": self._provider_label(),
-            "language": self._language_label(),
-            "api_key": self._configured(self.settings.api_key),
-            "translation_key": self._configured(self.settings.translation_api_key),
-            "translation_url": self._configured(self.settings.translation_api_base_url),
-            "websocket_key": self._configured(self.settings.websocket_api_key or self.settings.api_key),
-            "websocket_url": self._configured(self.settings.websocket_url),
-            "state": self.connection_badge.text() if hasattr(self, "connection_badge") else "-",
-            "first_text_latency": self._format_diagnostic_duration(self.diagnostics.first_text_latency),
-            "tail_latency": self._format_diagnostic_duration(self.diagnostics.tail_latency),
-            "total_elapsed": self._format_diagnostic_duration(self.diagnostics.total_elapsed),
-            "last_error": self.diagnostics.last_error or "无",
-        })
+        state = self.main_panel.connection_state() if hasattr(self, "main_panel") else "-"
+        self.diagnostics_panel.set_values(diagnostic_values(self.settings, self.diagnostics, state))
 
     @Slot()
     def toggle_compact_recording(self) -> None:
@@ -593,6 +468,10 @@ class FloatingInputWindow(QMainWindow):
     def on_file_asr_stream_event(self, event: AsrStreamEvent) -> None:
         if event.kind == "partial":
             self.on_transcription_partial(event.text)
+        elif event.kind == "fallback":
+            self._set_feedback(event.error)
+            self._set_status("云端识别失败：正在使用本地模型兜底")
+            self._set_floating_bar_state("processing", "本地兜底", "正在使用本地模型重新识别")
 
     @Slot(str)
     def on_transcription_partial(self, text: str) -> None:
@@ -748,7 +627,7 @@ class FloatingInputWindow(QMainWindow):
         self.settings_panel.refresh_hints()
         if save:
             self.settings_store.save(self.settings)
-        if self._engine_settings_changed(previous_settings, self.settings):
+        if engine_settings_changed(previous_settings, self.settings):
             self.asr_engine = self._build_engine()
         self.history.limit = self.settings.history_limit
         self.refresh_config_checks()
@@ -759,31 +638,8 @@ class FloatingInputWindow(QMainWindow):
             self.hotkey_active = self.hotkey.start()
             self.refresh_config_checks()
 
-    @staticmethod
-    def _engine_settings_changed(old: Settings, new: Settings) -> bool:
-        return any(
-            getattr(old, field) != getattr(new, field)
-            for field in (
-                "asr_provider",
-                "model_size",
-                "model_path",
-                "language",
-                "api_base_url",
-                "api_key",
-                "api_model",
-                "local_beam_size",
-                "websocket_url",
-                "websocket_api_key",
-                "websocket_model",
-                "realtime_chunk_ms",
-                "websocket_final_wait_ms",
-            )
-        )
-
     def _refresh_history(self) -> None:
-        self.history_list.clear()
-        for item in self.history.list():
-            self.history_list.addItem(item.text)
+        self.main_panel.set_history_items(item.text for item in self.history.list())
 
     def _show_error(self, message: str) -> None:
         safe_message = user_error_message(message)
@@ -815,16 +671,10 @@ class FloatingInputWindow(QMainWindow):
             self.compact_panel.hide()
 
     def _provider_label(self) -> str:
-        if self.settings.asr_provider == "api":
-            return "云端 API"
-        if self.settings.asr_provider == "websocket":
-            return "WebSocket 实时识别"
-        return "本地模型"
+        return provider_label(self.settings)
 
     def _language_label(self) -> str:
-        if self.settings.language == "en":
-            return "English"
-        return "中文"
+        return language_label(self.settings)
 
     def closeEvent(self, event) -> None:
         self.hide()

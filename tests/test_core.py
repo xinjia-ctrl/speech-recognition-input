@@ -8,9 +8,11 @@ from app.audio import RecordingError
 from app.asr import (
     AsrEngine,
     AsrStreamEvent,
+    FallbackAsrProvider,
     HttpAsrProvider,
     LocalWhisperProvider,
     RealtimeAsrConfig,
+    TranscriptionResult,
     UnifiedAsrEngine,
     WebSocketRealtimeAsrClient,
     WebSocketRealtimeProvider,
@@ -96,6 +98,7 @@ class CoreTestCase(unittest.TestCase):
                 api_base_url="https://example.com/asr",
                 api_key="test-key",
                 api_model="speech-model",
+                fallback_to_local=False,
                 websocket_url="wss://example.com/realtime",
                 websocket_api_key="websocket-test-key",
                 websocket_model="realtime-model",
@@ -121,6 +124,7 @@ class CoreTestCase(unittest.TestCase):
         self.assertEqual(loaded.api_base_url, "https://example.com/asr")
         self.assertEqual(loaded.api_key, "test-key")
         self.assertEqual(loaded.api_model, "speech-model")
+        self.assertFalse(loaded.fallback_to_local)
         self.assertEqual(loaded.websocket_url, "wss://example.com/realtime")
         self.assertEqual(loaded.websocket_api_key, "websocket-test-key")
         self.assertEqual(loaded.websocket_model, "realtime-model")
@@ -156,12 +160,23 @@ class CoreTestCase(unittest.TestCase):
             "",
         )
 
-    def test_build_config_checks_marks_active_api_missing_as_error(self) -> None:
-        checks = build_config_checks(Settings(asr_provider="api"), microphone_available=True, hotkey_available=True)
+    def test_build_config_checks_marks_active_api_missing_as_error_without_fallback(self) -> None:
+        checks = build_config_checks(
+            Settings(asr_provider="api", fallback_to_local=False),
+            microphone_available=True,
+            hotkey_available=True,
+        )
         http_check = next(item for item in checks if item.key == "http_asr")
 
         self.assertEqual(http_check.status, "error")
         self.assertIn("地址", http_check.detail)
+
+    def test_build_config_checks_warns_when_api_missing_with_fallback(self) -> None:
+        checks = build_config_checks(Settings(asr_provider="api"), microphone_available=True, hotkey_available=True)
+        http_check = next(item for item in checks if item.key == "http_asr")
+
+        self.assertEqual(http_check.status, "warning")
+        self.assertIn("本地兜底", http_check.message)
 
     def test_build_config_checks_marks_complete_translation_as_ok(self) -> None:
         checks = build_config_checks(
@@ -251,8 +266,55 @@ class CoreTestCase(unittest.TestCase):
 
     def test_asr_provider_factory_selects_provider_by_mode(self) -> None:
         self.assertIsInstance(build_asr_provider(Settings(asr_provider="local")), LocalWhisperProvider)
-        self.assertIsInstance(build_asr_provider(Settings(asr_provider="api")), HttpAsrProvider)
+        self.assertIsInstance(build_asr_provider(Settings(asr_provider="api")), FallbackAsrProvider)
+        self.assertIsInstance(
+            build_asr_provider(Settings(asr_provider="api", fallback_to_local=False)),
+            HttpAsrProvider,
+        )
         self.assertIsInstance(build_asr_provider(Settings(asr_provider="websocket")), WebSocketRealtimeProvider)
+
+    def test_fallback_provider_uses_local_when_primary_fails(self) -> None:
+        class FakeProvider:
+            model_name = "cloud"
+
+            def transcribe_file(self, audio_path, emit):
+                return TranscriptionResult("", 0.2, self.model_name, "网络失败")
+
+        class FakeLocalProvider:
+            model_name = "base"
+
+            def transcribe_file(self, audio_path, emit):
+                emit(AsrStreamEvent("final", text="本地结果"))
+                return TranscriptionResult("本地结果", 0.5, self.model_name)
+
+        events = []
+        provider = FallbackAsrProvider(FakeProvider(), FakeLocalProvider())
+        result = provider.transcribe_file("audio.wav", events.append)
+
+        self.assertEqual(result.text, "本地结果")
+        self.assertEqual(result.model_name, "cloud -> base")
+        self.assertEqual(events[0].kind, "fallback")
+
+    def test_fallback_provider_keeps_no_speech_error_without_retry(self) -> None:
+        class NoSpeechProvider:
+            model_name = "cloud"
+
+            def transcribe_file(self, audio_path, emit):
+                emit(AsrStreamEvent("error", error="No speech detected in audio"))
+                return TranscriptionResult("", 0.2, self.model_name, "No speech detected in audio")
+
+        class UnexpectedFallbackProvider:
+            model_name = "base"
+
+            def transcribe_file(self, audio_path, emit):
+                raise AssertionError("无语音错误不应该触发本地兜底")
+
+        events = []
+        provider = FallbackAsrProvider(NoSpeechProvider(), UnexpectedFallbackProvider())
+        result = provider.transcribe_file("audio.wav", events.append)
+
+        self.assertTrue(result.error)
+        self.assertEqual(events[0].kind, "error")
 
     def test_unified_asr_engine_delegates_to_selected_provider(self) -> None:
         engine = UnifiedAsrEngine(Settings(asr_provider="websocket", websocket_model="realtime-model"))

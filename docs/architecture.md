@@ -13,7 +13,9 @@
   app/main_window.py
     负责窗口编排、信号连接、状态刷新
   app/ui/
-    悬浮球、轻量输入框、设置页、配置检查、诊断页和样式
+    主面板、悬浮球、轻量输入框、设置页、配置检查、诊断页和样式
+  app/window_state.py
+    展示标签、诊断字段和引擎配置变更判断
 
 控制层
   app/controllers/
@@ -48,7 +50,7 @@
 2. `FloatingInputWindow` 调用 `RecordingController.start()` 开始录音。
 3. 再次触发时调用 `RecordingController.stop()` 生成 WAV 文件。
 4. `TranscribeWorker` 在线程中调用 `UnifiedAsrEngine.transcribe_file()`。
-5. `UnifiedAsrEngine` 根据设置选择 `LocalWhisperProvider` 或 `HttpAsrProvider`。
+5. `UnifiedAsrEngine` 根据设置选择 `LocalWhisperProvider`、`HttpAsrProvider` 或带本地兜底的 `FallbackAsrProvider`。
 6. 识别结果进入 `process_text_pipeline()` 做文本处理。
 7. 主窗口刷新预览、历史记录和诊断信息。
 8. 用户确认后通过 `InputController` 复制或粘贴到当前窗口。
@@ -70,6 +72,7 @@ Provider 约定：
 
 - `LocalWhisperProvider`：本地 faster-whisper 文件识别。
 - `HttpAsrProvider`：HTTP API 一次性文件识别。
+- `FallbackAsrProvider`：HTTP API 失败时使用同一段音频切换到本地模型。
 - `WebSocketRealtimeProvider`：WebSocket 实时识别。
 
 后续新增厂商时，优先新增 Provider 或在现有 Provider 内补协议适配，不要把厂商判断散落到 UI 层。
@@ -95,6 +98,7 @@ UI 层只负责传入配置开关，不直接处理具体规则。
 ## 当前工程化原则
 
 - 主窗口只做编排，不直接实现录音、识别、翻译、输入注入的底层细节。
+- 主面板 UI 由 `MainPanel` 创建和持有，主窗口通过信号连接业务流程。
 - 第三方服务差异收敛在 ASR Provider、翻译模块和文本润色模块。
 - 历史记录通过 Repository 抽象隔离，当前使用 JSON，后续可替换 SQLite。
 - 错误统一经过 `user_error_message()` 做用户可读化和密钥脱敏。
