@@ -187,6 +187,25 @@ python -m unittest discover -s tests
 
 麦克风录音、真实本地模型、真实云端 API、WebSocket 实时识别和外部应用插入需要在 Windows 桌面环境中手动验证。
 
+## 致谢
+
+本项目基于以下开源组件构建：
+
+- [PySide6](https://github.com/qtproject/pyside-pyside6) — Qt for Python 桌面 GUI 框架
+- [sounddevice](https://github.com/spatialaudio/python-sounddevice) — 基于 PortAudio 的麦克风录音
+- [NumPy](https://github.com/numpy/numpy) — 音频数据处理
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — 本地离线语音识别（基于 [OpenAI Whisper](https://github.com/openai/whisper)）
+- [OpenCC](https://github.com/BYVoid/OpenCC) — 繁简中文转换
+- [requests](https://github.com/psf/requests) — HTTP API 客户端
+- [websocket-client](https://github.com/websocket-client/websocket-client) — WebSocket 实时通信
+- [pynput](https://github.com/moses-palmer/pynput) — 全局快捷键监听
+- [pyperclip](https://github.com/asweigart/pyperclip) — 跨平台剪贴板操作
+- [PyAutoGUI](https://github.com/asweigart/pyautogui) — 模拟键盘输入
+- [PyInstaller](https://github.com/pyinstaller/pyinstaller) — Windows 可执行文件打包
+- [Ruff](https://github.com/astral-sh/ruff) — Python 代码检查与格式化
+
+感谢以上项目的作者和维护者的出色工作。
+
 ## 许可证
 
-比赛作品阶段暂未指定许可证，可在正式开源前补充。
+本项目采用 MIT 许可证。详情见 [LICENSE](LICENSE) 文件。

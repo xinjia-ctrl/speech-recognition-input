@@ -193,4 +193,4 @@ python -m ruff check app tests
 
 ## 许可证
 
-比赛作品阶段暂未指定许可证，正式开源前可根据比赛规则和第三方依赖协议补充。
+本项目采用 MIT 许可证。详情见 [LICENSE](LICENSE) 文件。
