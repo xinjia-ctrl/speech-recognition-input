@@ -31,8 +31,8 @@ ASR_API_URL_PRESETS: tuple[Preset, ...] = (
     ("硅基流动 | https://api.siliconflow.com/v1/audio/transcriptions", "https://api.siliconflow.com/v1/audio/transcriptions"),
     ("硅基流动 | https://api.siliconflow.cn/v1/audio/transcriptions", "https://api.siliconflow.cn/v1/audio/transcriptions"),
     (
-        "百炼 | https://dashscope.aliyuncs.com/compatible-mode/v1/audio/transcriptions",
-        "https://dashscope.aliyuncs.com/compatible-mode/v1/audio/transcriptions",
+        "百炼 Qwen-ASR | https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
     ),
 )
 
@@ -41,7 +41,7 @@ ASR_API_MODEL_PRESETS: tuple[Preset, ...] = (
     ("OpenAI | gpt-4o-mini-transcribe", "gpt-4o-mini-transcribe"),
     ("OpenAI | gpt-4o-transcribe", "gpt-4o-transcribe"),
     ("硅基流动 | FunAudioLLM/SenseVoiceSmall", "FunAudioLLM/SenseVoiceSmall"),
-    ("百炼 | paraformer-v2", "paraformer-v2"),
+    ("百炼 Qwen-ASR | qwen3-asr-flash", "qwen3-asr-flash"),
 )
 
 TRANSLATION_API_URL_PRESETS: tuple[Preset, ...] = (

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import base64
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -125,6 +126,9 @@ class AsrEngine:
         except ImportError as exc:
             raise DependencyMissingError("requests", "pip install -r requirements-cloud.txt") from exc
 
+        if self._is_dashscope_qwen_asr_endpoint(self.api_base_url):
+            return self._transcribe_with_dashscope_qwen_asr(path, started_at, requests)
+
         headers = {}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -155,12 +159,104 @@ class AsrEngine:
         elapsed = time.perf_counter() - started_at
         return TranscriptionResult(text, elapsed, self.model_name)
 
+    def _transcribe_with_dashscope_qwen_asr(
+        self,
+        path: Path,
+        started_at: float,
+        requests_module: Any,
+    ) -> TranscriptionResult:
+        if not self.api_model:
+            raise ConfigurationError("未配置百炼 Qwen-ASR 模型名，建议使用 qwen3-asr-flash")
+
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        audio_data = base64.b64encode(path.read_bytes()).decode("ascii")
+        payload = {
+            "model": self.api_model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_audio",
+                            "input_audio": {
+                                "data": f"data:audio/wav;base64,{audio_data}",
+                            },
+                        }
+                    ],
+                }
+            ],
+            "stream": False,
+            "asr_options": {
+                "language": self.language,
+                "enable_itn": True,
+            },
+        }
+        if self.initial_prompt:
+            payload["messages"].insert(
+                0,
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": self.initial_prompt}],
+                },
+            )
+
+        response = requests_module.post(
+            self._dashscope_qwen_asr_url(self.api_base_url),
+            headers=headers,
+            json=payload,
+            timeout=self.api_timeout_seconds,
+        )
+        response.raise_for_status()
+
+        text = self._extract_text_from_api_payload(response.json())
+        if not text:
+            raise ExternalServiceError("云端 ASR API 响应中没有可用文本", kind=ErrorKind.ASR)
+
+        text = to_simplified_chinese(tidy_text(text))
+        elapsed = time.perf_counter() - started_at
+        return TranscriptionResult(text, elapsed, self.model_name)
+
+    @staticmethod
+    def _is_dashscope_qwen_asr_endpoint(url: str) -> bool:
+        normalized = url.strip().lower()
+        return "dashscope" in normalized and "compatible-mode/v1" in normalized
+
+    @staticmethod
+    def _dashscope_qwen_asr_url(url: str) -> str:
+        normalized = url.strip().rstrip("/")
+        if normalized.endswith("/audio/transcriptions"):
+            return normalized[: -len("/audio/transcriptions")] + "/chat/completions"
+        if normalized.endswith("/chat/completions"):
+            return normalized
+        if normalized.endswith("/compatible-mode/v1"):
+            return f"{normalized}/chat/completions"
+        return normalized
+
     @staticmethod
     def _extract_text_from_api_payload(payload: dict[str, Any]) -> str:
         for key in ("text", "transcript", "transcription"):
             value = payload.get(key)
             if isinstance(value, str):
                 return value
+
+        choices = payload.get("choices")
+        if isinstance(choices, list):
+            for choice in choices:
+                if not isinstance(choice, dict):
+                    continue
+                message = choice.get("message")
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, str):
+                        return content
+                delta = choice.get("delta")
+                if isinstance(delta, dict):
+                    content = delta.get("content")
+                    if isinstance(content, str):
+                        return content
 
         for key in ("data", "result"):
             value = payload.get(key)

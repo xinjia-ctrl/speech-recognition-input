@@ -96,12 +96,15 @@ class HttpAsrProvider(FileAsrProvider):
     name = "api"
 
     def __init__(self, settings: Settings) -> None:
+        api_key = settings.api_key
+        if "dashscope" in settings.api_base_url.lower() and settings.websocket_api_key:
+            api_key = settings.websocket_api_key
         super().__init__(
             AsrEngine(
                 provider="api",
                 language=settings.language,
                 api_base_url=settings.api_base_url,
-                api_key=settings.api_key,
+                api_key=api_key,
                 api_model=settings.api_model,
             )
         )

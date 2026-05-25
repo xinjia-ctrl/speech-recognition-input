@@ -10,7 +10,7 @@ ASR_API_MODEL_RULES = (
     ("api.openai.com", ("whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe")),
     ("api.siliconflow.com", ("FunAudioLLM/SenseVoiceSmall",)),
     ("api.siliconflow.cn", ("FunAudioLLM/SenseVoiceSmall",)),
-    ("dashscope.aliyuncs.com", ("paraformer-v2",)),
+    ("dashscope.aliyuncs.com", ("qwen3-asr-flash",)),
 )
 
 TRANSLATION_MODEL_RULES = (

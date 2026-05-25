@@ -395,6 +395,22 @@ class CoreTestCase(unittest.TestCase):
             AsrEngine._extract_text_from_api_payload({"data": {"text": "你好"}}),
             "你好",
         )
+        self.assertEqual(
+            AsrEngine._extract_text_from_api_payload({"choices": [{"message": {"content": "你好"}}]}),
+            "你好",
+        )
+
+    def test_dashscope_qwen_asr_url_normalization(self) -> None:
+        self.assertEqual(
+            AsrEngine._dashscope_qwen_asr_url(
+                "https://dashscope.aliyuncs.com/compatible-mode/v1/audio/transcriptions"
+            ),
+            "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        )
+        self.assertEqual(
+            AsrEngine._dashscope_qwen_asr_url("https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        )
 
     def test_websocket_message_parsing_supports_partial_and_final_text(self) -> None:
         self.assertEqual(
