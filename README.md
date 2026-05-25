@@ -1,18 +1,19 @@
 # XinVoice
 
-XinVoice 是一个面向 Windows 桌面的语音输入法原型。用户可以通过悬浮窗或全局快捷键录音，使用本地离线模型、HTTP 云端 API 或 WebSocket 实时识别中文语音，并将结果复制或插入到当前输入位置。
+XinVoice 是一个面向 Windows 桌面的语音输入法原型。用户可以通过悬浮窗或全局快捷键录音，使用本地离线模型、HTTP 云端 API 或 WebSocket 实时识别中文/英文语音，并将结果复制或插入到当前输入位置。
 
 ## 功能特性
 
 - 桌面悬浮窗，支持托盘驻留。
 - 麦克风录音并保存为临时 WAV 音频。
-- 使用 `faster-whisper` 进行本地离线中文语音识别。
+- 使用 `faster-whisper` 进行本地离线中文/英文语音识别。
 - 识别结果可编辑、整理、复制和插入。
 - 支持三种识别模式：本地离线、HTTP API 一次性识别、WebSocket 实时识别。
 - HTTP API 失败时可自动降级到本地 faster-whisper，保障云端不可用时仍能输入。
 - 支持全局快捷键开始/停止录音。
+- 支持配置检查、识别诊断、规则后处理、词典校正、AI 润色和中英双向翻译。
 - 保存最近语音输入历史。
-- 设置模型大小、模型路径、语言、快捷键和自动插入。
+- 设置模型大小、模型路径、语言、快捷键、自动插入和历史记录数量。
 
 ## 技术栈
 
@@ -20,8 +21,8 @@ XinVoice 是一个面向 Windows 桌面的语音输入法原型。用户可以�
 - PySide6：桌面 GUI
 - sounddevice + numpy：麦克风录音与音频处理
 - faster-whisper：本地离线语音识别
-- OpenCC：繁体中文转简体中文后处理
-- requests：云端 ASR API 调用
+- OpenCC：繁体中文转简体中文后处理，未安装时使用内置基础映射兜底
+- requests：HTTP ASR、翻译和 AI 润色 API 调用
 - websocket-client：WebSocket 实时语音识别
 - pynput：全局快捷键
 - pyperclip + pyautogui：剪贴板与粘贴输入
@@ -105,8 +106,16 @@ pip install -r requirements-build.txt
 - `preview_before_insert`：自动插入前是否保留预览确认。
 - `postprocess_enabled`：是否启用规则后处理。
 - `postprocess_mode`：文本场景模式，支持 `chat`、`document`、`code`。
+- `dictionary_correction_enabled`：是否启用本地词典校正。
+- `ai_polish_enabled`：是否启用云端 AI 润色。
+- `ai_polish_api_base_url`：AI 润色接口地址。
+- `ai_polish_api_key`：AI 润色接口密钥。
+- `ai_polish_model`：AI 润色模型名。
 - `local_beam_size`：本地模型搜索宽度，数值越小响应越快，默认 `1`。
 - `history_limit`：历史记录数量。
+- `sample_rate`：录音采样率，默认 `16000`。
+
+HTTP ASR 通用接口使用 OpenAI 风格的 `/v1/audio/transcriptions` 文件上传协议。百炼 Qwen-ASR 使用 `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`，推荐模型为 `qwen3-asr-flash`；如果配置了 `websocket_api_key`，百炼 HTTP ASR 会优先复用该 Key，避免拿其他服务商的 `api_key` 调用百炼接口。
 
 ## 历史记录存储
 
@@ -127,7 +136,7 @@ python -m ruff check app tests
 
 ```text
 app/
-  asr/       离线语音识别封装
+  asr/       本地、HTTP API、WebSocket 识别 Provider
   audio/     麦克风录音
   controllers/ 后台识别、实时识别和翻译 Worker
   input/     全局快捷键、复制和粘贴输入
@@ -145,11 +154,11 @@ tests/
 
 ## 原创功能说明
 
-本项目原创实现包括桌面悬浮交互、录音状态管理、识别流程封装、历史记录、配置页、文本整理和复制/插入流程。语音识别模型、GUI 框架、录音库和输入模拟库为第三方依赖，已在技术栈中列明。
+本项目原创实现包括桌面悬浮交互、录音状态管理、本地/HTTP/WebSocket ASR Provider 封装、百炼 Qwen-ASR 和 Paraformer 实时协议适配、历史记录、配置检查、诊断信息、文本整理、翻译、复制和插入流程。语音识别模型、GUI 框架、录音库、网络库和输入模拟库为第三方依赖，已在技术栈中列明。
 
 ## Demo 视频
 
-待补充：提交前将 Demo 视频链接填写在此处。
+[B 站 Demo 视频](https://www.bilibili.com/video/BV1d2Go6HEnu/?pop_share=1&spm_id_from=333.40164.0.0&vd_source=7a2907c97849e6c6c07ed23647d8d8bc)
 
 ## 开发说明
 
@@ -170,13 +179,13 @@ WebSocket 模式会在连接建立后发送一条 JSON 启动消息，然后持�
 
 ## 测试说明
 
-当前测试覆盖配置读写、历史记录数量限制和文本整理逻辑：
+当前测试覆盖配置读写、配置检查、ASR Provider 选择、HTTP 失败兜底、无语音处理、提示词回显过滤、WebSocket 消息解析、文本处理、翻译结果抽取、历史记录、错误脱敏和输入控制器错误处理：
 
 ```powershell
 python -m unittest discover -s tests
 ```
 
-麦克风录音、离线识别和外部应用插入需要在 Windows 桌面环境中手动验证。
+麦克风录音、真实本地模型、真实云端 API、WebSocket 实时识别和外部应用插入需要在 Windows 桌面环境中手动验证。
 
 ## 许可证
 
